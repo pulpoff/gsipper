@@ -33,11 +33,62 @@ mkdir -p "$STAGE"
 install -d "$STAGE/usr/lib/gsipper"
 cp -r gsipper "$STAGE/usr/lib/gsipper/"
 # Also stash a copy of build.sh so the launcher's --install-pjsua2
-# can reuse the existing build_pjsip flow.
+# can reuse the existing build_pjsip flow (used as a fallback when
+# bundled pjsua2 is ABI-incompatible with the target system).
 install -m 755 build.sh "$STAGE/usr/lib/gsipper/build.sh"
 find "$STAGE/usr/lib/gsipper" -type d -name __pycache__ \
     -exec rm -rf {} + 2>/dev/null || true
 find "$STAGE/usr/lib/gsipper" -type f -name '*.pyc' -delete
+
+# 1b. Bundle PJSUA2 if we can find it. We probe in three places, in
+# preference order:
+#     a) the current Python's site-packages (`python3 -c "import pjsua2"`)
+#     b) any ~/.local/lib/pythonX.Y/site-packages
+#     c) the pjproject build tree under ~/.cache/gsipper
+# A locally-built pjsua2 ships pjsua2.py + _pjsua2*.so next to each
+# other; we copy both into /usr/lib/gsipper/ where the launcher's
+# sys.path already points.
+# Helper that scans the usual places for a pjsua2.py + matching .so.
+find_pjsua2_src() {
+    if PJSUA2_FILE="$(python3 -c 'import pjsua2; print(pjsua2.__file__)' 2>/dev/null)"; then
+        d="$(dirname "$PJSUA2_FILE")"
+        if ls "$d"/_pjsua2*.so >/dev/null 2>&1; then
+            echo "$d"; return 0
+        fi
+    fi
+    for candidate in "$HOME"/.local/lib/python3*/site-packages \
+                     "$HOME"/.cache/gsipper/pjproject-*/pjsip-apps/src/swig/python \
+                     "$HOME"/.cache/gsipper/pjproject-*/pjsip-apps/src/swig/python/build/lib.*; do
+        for path in $candidate; do
+            if [ -f "$path/pjsua2.py" ] && ls "$path"/_pjsua2*.so >/dev/null 2>&1; then
+                echo "$path"; return 0
+            fi
+        done
+    done
+    return 1
+}
+
+PJSUA2_SRC="$(find_pjsua2_src || true)"
+if [ -z "$PJSUA2_SRC" ]; then
+    echo ">>> pjsua2 not built yet — invoking build.sh --pjsua2"
+    if "$ROOT_DIR/build.sh" --pjsua2; then
+        PJSUA2_SRC="$(find_pjsua2_src || true)"
+    fi
+fi
+if [ -n "$PJSUA2_SRC" ]; then
+    echo ">>> bundling pjsua2 from: $PJSUA2_SRC"
+    install -m 644 "$PJSUA2_SRC/pjsua2.py" "$STAGE/usr/lib/gsipper/"
+    for so in "$PJSUA2_SRC"/_pjsua2*.so; do
+        [ -f "$so" ] && install -m 644 "$so" "$STAGE/usr/lib/gsipper/"
+    done
+    BUNDLED_PJSUA2=1
+else
+    echo ">>> WARNING: no pjsua2 build found locally."
+    echo "    The .deb will install but cannot place calls until the user runs"
+    echo "    'sudo gsipper --install-pjsua2'. To bundle, run './build.sh --pjsua2'"
+    echo "    first."
+    BUNDLED_PJSUA2=0
+fi
 
 # 2. /usr/bin/gsipper launcher
 install -d "$STAGE/usr/bin"

@@ -19,10 +19,16 @@ configure)
             2>/dev/null || true
     fi
 
-    if ! python3 -c "import pjsua2" >/dev/null 2>&1; then
+    # The deb may bundle pjsua2 under /usr/lib/gsipper; let the same
+    # check that gsipper itself uses at runtime decide.
+    if ! python3 -c "
+import sys
+sys.path.insert(0, '/usr/lib/gsipper')
+import pjsua2  # noqa
+" >/dev/null 2>&1; then
         cat <<EOF
 
-  NOTE: the PJSUA2 Python bindings are not available system-wide.
+  NOTE: the PJSUA2 Python bindings are not importable.
   gsipper will start but cannot place calls until you build them:
 
       sudo gsipper --install-pjsua2
