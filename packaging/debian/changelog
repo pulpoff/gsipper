@@ -1,3 +1,17 @@
+gsipper (1.0.6-1) unstable; urgency=medium
+
+  * Disconnect now paints the headerbar dot red immediately. The
+    trunk's 200 OK to our un-REGISTER used to flap the dot back to
+    yellow (Registering...). A user-disconnect latch is now consulted
+    in _on_reg_state and cleared by Connect / Reconnect / any
+    successful REGISTER.
+  * _teardown_account_locked logs 'tearing down existing account' /
+    'account torn down', and _do_configure_account logs 'new account
+    created; REGISTER initiated' so the Reconnect path is auditable
+    from the log.
+
+ -- pulpoff <noreply@pulpoff.com>  Tue, 19 May 2026 00:00:00 +0000
+
 gsipper (1.0.5-1) unstable; urgency=medium
 
   * Settings: new "Enable messages" toggle (default off). When off,

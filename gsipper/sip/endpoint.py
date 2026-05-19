@@ -386,6 +386,7 @@ class SipEndpoint:
                 )
                 acfg = self._build_account_config(settings)
                 self._account.create(acfg)
+                logger.info("new account created; REGISTER initiated")
             except Exception as exc:
                 logger.error("configure_account failed: %s", exc, exc_info=True)
                 self._notify_reg(False, 0, f"Init failed: {exc}")
@@ -561,15 +562,24 @@ class SipEndpoint:
     def _teardown_account_locked(self) -> None:
         if self._account is None:
             return
+        # Tell pjsua2 to send an un-REGISTER and detach the account.
+        # shutdown() does not wait for the un-REGISTER's 200 OK; the
+        # caller (e.g. _do_configure_account on reconnect) immediately
+        # builds a fresh _Account and create()s it, so two packets go
+        # back-to-back on the wire: un-REGISTER (Expires: 0) then a
+        # new REGISTER. The trunk's 200 OK we log next belongs to the
+        # latter, not to the cached previous registration.
+        logger.info("tearing down existing account")
         try:
             self._account.shutdown()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning("account.shutdown raised: %s", exc)
         try:
             self._account.delete()
         except Exception:
             pass
         self._account = None
+        logger.info("account torn down")
 
     def _on_reg_state_internal(self, active: bool, code: int, reason: str) -> bool:
         self._notify_reg(active, code, reason)
