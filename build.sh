@@ -12,6 +12,7 @@
 #   ./build.sh --deps    # install runtime + build deps, don't launch
 #   ./build.sh --pjsua2  # only (re)build pjsua2
 #   ./build.sh --run     # only launch, skip dep checks
+#   ./build.sh --deb     # build dist/gsipper_<version>_<arch>.deb
 
 set -euo pipefail
 
@@ -192,12 +193,15 @@ case "${1:-}" in
     --pjsua2)
         build_pjsip
         ;;
+    --deb)
+        exec "$SCRIPT_DIR/packaging/build-deb.sh"
+        ;;
     --run)
         shift || true
         run_app "$@"
         ;;
     --help|-h)
-        sed -n '2,15p' "$0"
+        sed -n '2,16p' "$0"
         ;;
     *)
         install_deps

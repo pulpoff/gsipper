@@ -7,5 +7,6 @@ StartupWMClass=com.pulpoff.gsipper
 Exec=/usr/bin/gsipper %U
 Icon=gsipper
 Terminal=false
-Categories=Network;Telephony;
+Categories=Network;Telephony;InstantMessaging;
+Keywords=SIP;VoIP;phone;call;dialer;telephone;softphone;
 MimeType=x-scheme-handler/tel;x-scheme-handler/sip;x-scheme-handler/sips;

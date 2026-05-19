@@ -1,0 +1,5 @@
+#!/bin/sh
+# prerm: nothing to undo before the files come out.
+set -e
+#DEBHELPER#
+exit 0
