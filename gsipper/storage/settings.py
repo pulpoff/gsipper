@@ -19,13 +19,21 @@ def default_codecs() -> List[dict]:
     'unavailable' tooltip.
     """
     return [
-        {"id": "opus/48000",   "name": "Opus",               "enabled": True},
-        {"id": "G722/16000",   "name": "G.722",              "enabled": True},
-        {"id": "PCMA/8000",    "name": "G.711 a-law (PCMA)", "enabled": True},
-        {"id": "PCMU/8000",    "name": "G.711 µ-law (PCMU)", "enabled": True},
-        {"id": "G729/8000",    "name": "G.729 (bcg729)",     "enabled": True},
-        {"id": "GSM/8000",     "name": "GSM Full-Rate",      "enabled": True},
-        {"id": "G726-32/8000", "name": "G.726-32",           "enabled": False},
+        {"id": "opus/48000",   "name": "Opus",                "enabled": True},
+        {"id": "G722/16000",   "name": "G.722",               "enabled": True},
+        {"id": "G7221/16000",  "name": "G.722.1",             "enabled": True},
+        {"id": "PCMA/8000",    "name": "G.711 a-law (PCMA)",  "enabled": True},
+        {"id": "PCMU/8000",    "name": "G.711 µ-law (PCMU)",  "enabled": True},
+        {"id": "G729/8000",    "name": "G.729 (bcg729)",      "enabled": True},
+        {"id": "GSM/8000",     "name": "GSM Full-Rate",       "enabled": True},
+        {"id": "G726-32/8000", "name": "G.726-32",            "enabled": True},
+        {"id": "G726-24/8000", "name": "G.726-24",            "enabled": True},
+        {"id": "G726-16/8000", "name": "G.726-16",            "enabled": True},
+        {"id": "G726-40/8000", "name": "G.726-40",            "enabled": True},
+        # G.723.1 is patent-restricted and not bundled with PJSIP;
+        # listing it here surfaces it in the codec UI but pjsua2 will
+        # report it 'unavailable' unless a commercial impl is linked.
+        {"id": "G723/8000",    "name": "G.723.1",             "enabled": False},
     ]
 
 

@@ -54,9 +54,12 @@ PJSIP's PJSUA2 Python bindings.
 - Adw.PreferencesDialog account editor (Basic + Advanced) with
   server / username / password, transport (UDP / TCP / TLS), STUN, codec
   priority list and a few NAT / keep-alive knobs.
-- Codecs shipped pre-compiled in the .deb: **Opus**, **G.722**, **G.711
-  a-law / µ-law**, **G.729** (via bcg729), **GSM Full-Rate**, **G.726-32**.
+- Codecs shipped pre-compiled in the .deb: **Opus**, **G.722**,
+  **G.722.1**, **G.711** a-law / µ-law, **G.729** (via bcg729),
+  **GSM Full-Rate**, and **G.726** (16 / 24 / 32 / 40 kbps).
   Each is selectable and reorderable in Account → Advanced → Codecs.
+  *G.723.1 is listed in the UI but disabled by default — it's
+  patent-restricted and not bundled with PJSIP.*
 - Status dot in the window header bar — green online, yellow connecting,
   red offline; clickable for Connect / Disconnect / Reconnect / Exit;
   tooltip carries the SIP reason text.
@@ -132,7 +135,7 @@ python3 -m gsipper
 
 ```sh
 ./build.sh --deb
-sudo apt install ./dist/gsipper_1.2.0_amd64.deb
+sudo apt install ./dist/gsipper_1.2.1_amd64.deb
 sudo gsipper --install-pjsua2     # compile PJSUA2 bindings (one-time)
 ```
 
