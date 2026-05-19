@@ -1,3 +1,35 @@
+gsipper (1.3.1-1) unstable; urgency=medium
+
+  * Fix './build.sh --pjsua2' leaving a stale 2.14.1 egg on the
+    Python import path. PJSIP's setup.py installs into a versioned
+    'pjsua2-<ver>-py<x.y>.egg' directory and APPENDS the path to
+    easy-install.pth, so re-running the build (e.g. 2.14.1 -> 2.15)
+    kept the older egg ahead of the new one — 'import pjsua2'
+    silently resolved to the stale build and our --deb step then
+    bundled it. The user's report:
+
+      Adding pjsua2 2.15 to easy-install.pth file
+      ...
+      $ ./build.sh --deb
+      >>> bundling pjsua2 from:
+          /home/.../site-packages/pjsua2-2.14.1-py3.13-...egg
+
+    Two changes:
+
+    1) Force-rebuild's user-site cleanup now wipes ALL pjsua2*
+       artefacts under ~/.local/lib/python3*/site-packages —
+       pjsua2.py, _pjsua2*.so, pjsua2-*.egg/ directories,
+       pjsua2*.egg-info/ — and strips any 'pjsua2' lines from
+       easy-install.pth.
+
+    2) build_pjsip no longer runs 'setup.py install --user'.
+       Instead it directly copies build/lib.linux-*/_pjsua2*.so
+       and pjsua2.py into the Python user-site (resolved via
+       'site.getusersitepackages()'). No more egg machinery,
+       no more easy-install.pth surprises.
+
+ -- pulpoff <noreply@pulpoff.com>  Tue, 19 May 2026 00:00:00 +0000
+
 gsipper (1.3.0-1) unstable; urgency=medium
 
   Final-release polish pass. Audit-driven cleanups + the focused
