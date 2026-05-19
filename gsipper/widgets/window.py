@@ -431,6 +431,11 @@ class MainWindow(_BaseWindow):
 
     def _build_dial_uri(self, target: str) -> str:
         target = target.strip()
+        # Provider-side trunks generally strip '+' from E.164 numbers;
+        # we translate to the international access prefix at dial time.
+        # Contacts and call history still display the original '+'.
+        if target.startswith("+"):
+            target = "00" + target[1:]
         if target.startswith(("sip:", "sips:", "tel:")):
             return target
         a = self._settings.account

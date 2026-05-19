@@ -46,6 +46,18 @@ class ContactsView(Gtk.Box):
         self._contacts: List[Contact] = contacts_store.load_contacts()
         self._query: str = ""
 
+        # GAction group exposing edit/delete/dial-by-index for menu rows.
+        self._action_group = Gio.SimpleActionGroup()
+        for name, handler in (
+            ("dial",   self._on_dial_action),
+            ("edit",   self._on_edit_action),
+            ("delete", self._on_delete_action),
+        ):
+            action = Gio.SimpleAction.new(name, GLib.VariantType.new("s"))
+            action.connect("activate", handler)
+            self._action_group.add_action(action)
+        self.insert_action_group("contacts", self._action_group)
+
         # Top action bar: search, Add, Import.
         top = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6,
                       margin_top=8, margin_bottom=8,
@@ -198,19 +210,131 @@ class ContactsView(Gtk.Box):
     def _row_menu(self, contact: Contact) -> Gio.Menu:
         menu = Gio.Menu()
         # If a contact has multiple numbers, list them all so the user
-        # can pick which to dial. The current implementation just emits
-        # the primary; per-number dial lands in a future iteration.
+        # can pick which to dial. The "id|index" target lets the dial
+        # action find the contact and pick a specific phone.
         for idx, phone in enumerate(contact.phones[:5]):
             label = phone.get("label") or "phone"
             number = phone.get("number") or ""
-            if number:
-                menu.append(f"Call {label}: {number}",
-                            f"contacts.dial::{contact.id}|{idx}")
+            if not number:
+                continue
+            item = Gio.MenuItem.new(f"Call {label}: {number}", None)
+            item.set_action_and_target_value(
+                "contacts.dial",
+                GLib.Variant.new_string(f"{contact.id}|{idx}"),
+            )
+            menu.append_item(item)
+
         edit_section = Gio.Menu()
-        edit_section.append("Edit…", f"contacts.edit::{contact.id}")
-        edit_section.append("Delete", f"contacts.delete::{contact.id}")
+        edit = Gio.MenuItem.new("Edit…", None)
+        edit.set_action_and_target_value(
+            "contacts.edit", GLib.Variant.new_string(contact.id))
+        edit_section.append_item(edit)
+
+        delete = Gio.MenuItem.new("Delete", None)
+        delete.set_action_and_target_value(
+            "contacts.delete", GLib.Variant.new_string(contact.id))
+        edit_section.append_item(delete)
+
         menu.append_section(None, edit_section)
         return menu
+
+    # ------------------------------------------------------------------
+    # Edit / Delete / Dial action handlers
+    # ------------------------------------------------------------------
+
+    def _find(self, contact_id: str) -> Optional[Contact]:
+        return next((c for c in self._contacts if c.id == contact_id), None)
+
+    def _on_dial_action(self, _action, param) -> None:
+        value = param.get_string()
+        contact_id, sep, idx_str = value.rpartition("|")
+        if not sep:
+            contact_id, idx_str = value, "0"
+        contact = self._find(contact_id)
+        if contact is None:
+            return
+        try:
+            idx = int(idx_str)
+        except ValueError:
+            idx = 0
+        if 0 <= idx < len(contact.phones):
+            number = contact.phones[idx].get("number", "")
+            if number:
+                logger.info("dial from contact menu: %s -> %s", contact.name, number)
+                self.emit("call-requested", number)
+
+    def _on_edit_action(self, _action, param) -> None:
+        contact = self._find(param.get_string())
+        if contact is None:
+            return
+        self._open_edit_dialog(contact)
+
+    def _on_delete_action(self, _action, param) -> None:
+        contact = self._find(param.get_string())
+        if contact is None:
+            return
+        self._confirm_delete(contact)
+
+    def _open_edit_dialog(self, contact: Contact) -> None:
+        from ..dialogs.add_contact_dialog import AddContactDialog
+        win = self.get_root()
+        AddContactDialog(
+            parent=win,
+            on_save=self._on_contact_saved,
+            contact=contact,
+        ).present()
+
+    def _confirm_delete(self, contact: Contact) -> None:
+        win = self.get_root()
+        if _USE_ADW and hasattr(Adw, "MessageDialog"):
+            dialog = Adw.MessageDialog.new(
+                win,
+                "Delete contact?",
+                f"Remove “{contact.name}” from the contact list? This cannot be undone.",
+            )
+            dialog.add_response("cancel", "Cancel")
+            dialog.add_response("delete", "Delete")
+            dialog.set_response_appearance(
+                "delete", Adw.ResponseAppearance.DESTRUCTIVE)
+            dialog.set_default_response("cancel")
+            dialog.set_close_response("cancel")
+            dialog.connect(
+                "response",
+                lambda _d, response: self._on_delete_confirmed(contact, response),
+            )
+            dialog.present()
+            return
+
+        # Fallback for libadwaita < 1.2: plain Gtk.MessageDialog.
+        dialog = Gtk.MessageDialog(
+            transient_for=win,
+            modal=True,
+            buttons=Gtk.ButtonsType.NONE,
+            message_type=Gtk.MessageType.WARNING,
+            text="Delete contact?",
+            secondary_text=f"Remove '{contact.name}'?",
+        )
+        dialog.add_button("Cancel", Gtk.ResponseType.CANCEL)
+        dialog.add_button("Delete", Gtk.ResponseType.OK)
+        dialog.connect(
+            "response",
+            lambda d, response: (
+                self._on_delete_confirmed(
+                    contact,
+                    "delete" if response == Gtk.ResponseType.OK else "cancel",
+                ),
+                d.destroy(),
+            ),
+        )
+        dialog.present()
+
+    def _on_delete_confirmed(self, contact: Contact, response: str) -> None:
+        if response != "delete":
+            return
+        logger.info("delete contact: %s (%s)", contact.name, contact.id)
+        self._contacts = [c for c in self._contacts if c.id != contact.id]
+        contacts_store.save_contacts(self._contacts)
+        self._rebuild_rows()
 
     # ------------------------------------------------------------------
     # Dialing
