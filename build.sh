@@ -1,13 +1,17 @@
 #!/usr/bin/env bash
 # gsipper — one-shot install + run script for Debian / Ubuntu / derivatives.
 #
-# Pure Python (PyGObject + GTK4 + libadwaita) with PJSUA2 for SIP, so
-# "building" means installing the runtime dependencies.
+# Pure Python (PyGObject + GTK4 + libadwaita) with PJSUA2 for SIP.
+# python3-pjsua2 is NOT packaged on Debian/Ubuntu, so we compile
+# pjproject + its SWIG bindings from source on first run, cached
+# under ~/.cache/gsipper. The .deb path will ship a prebuilt
+# _pjsua2.so instead.
 #
 # Usage:
-#   ./build.sh          # install deps if missing, then run the app
-#   ./build.sh --deps   # only install deps, don't launch
-#   ./build.sh --run    # only launch, skip the dep check
+#   ./build.sh           # install deps + build pjsua2 if missing, then run
+#   ./build.sh --deps    # install runtime + build deps, don't launch
+#   ./build.sh --pjsua2  # only (re)build pjsua2
+#   ./build.sh --run     # only launch, skip dep checks
 
 set -euo pipefail
 
@@ -23,8 +27,27 @@ APT_PACKAGES=(
     python3-gi-cairo
     gir1.2-gtk-4.0
     gir1.2-adw-1
-    python3-pjsua2
 )
+
+# Build deps for compiling pjproject + Python bindings from source
+# (used by build_pjsip — Debian/Ubuntu do not package python3-pjsua2)
+PJ_BUILD_DEPS=(
+    build-essential
+    pkg-config
+    swig
+    git
+    python3-dev
+    python3-setuptools
+    libasound2-dev
+    libpulse-dev
+    libssl-dev
+    libopus-dev
+    libsrtp2-dev
+    uuid-dev
+)
+
+PJ_VERSION="2.14.1"
+PJ_CACHE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/gsipper/pjproject-${PJ_VERSION}"
 
 install_deps() {
     if ! command -v apt-get >/dev/null 2>&1; then
@@ -32,24 +55,87 @@ install_deps() {
         echo "  ${APT_PACKAGES[*]}" >&2
         return
     fi
+    apt_install "${APT_PACKAGES[@]}"
+    build_pjsip
+}
 
+apt_install() {
+    # Install a list of apt packages, only the ones not already present.
+    local pkgs=("$@")
     local missing=()
-    for pkg in "${APT_PACKAGES[@]}"; do
+    local pkg
+    for pkg in "${pkgs[@]}"; do
         if ! dpkg -s "$pkg" >/dev/null 2>&1; then
             missing+=("$pkg")
         fi
     done
-
-    if [ ${#missing[@]} -gt 0 ]; then
-        echo "Installing missing system packages: ${missing[*]}"
-        if [ "$(id -u)" -eq 0 ]; then
-            apt-get update
-            apt-get install -y "${missing[@]}"
-        else
-            sudo apt-get update
-            sudo apt-get install -y "${missing[@]}"
-        fi
+    if [ ${#missing[@]} -eq 0 ]; then
+        return
     fi
+    echo "Installing: ${missing[*]}"
+    if [ "$(id -u)" -eq 0 ]; then
+        apt-get update
+        apt-get install -y "${missing[@]}"
+    else
+        sudo apt-get update
+        sudo apt-get install -y "${missing[@]}"
+    fi
+}
+
+build_pjsip() {
+    # Compile pjproject and its Python (SWIG) bindings.
+    # Bindings install into the user site-packages, so no sudo needed
+    # for the final step. The static pjproject .a archives stay in the
+    # cache; we only re-run if pjsua2 is not importable.
+    if "$PYTHON" -c "import pjsua2" >/dev/null 2>&1; then
+        return
+    fi
+
+    if ! command -v apt-get >/dev/null 2>&1; then
+        echo "error: pjsua2 not installed and apt-get unavailable;" >&2
+        echo "       install pjproject + Python SWIG bindings manually." >&2
+        return 1
+    fi
+
+    echo
+    echo "==> Building pjproject ${PJ_VERSION} + pjsua2 Python bindings"
+    echo "    (one-time, ~5 min, ~150 MB under $PJ_CACHE_DIR)"
+    echo
+
+    apt_install "${PJ_BUILD_DEPS[@]}"
+
+    mkdir -p "$(dirname "$PJ_CACHE_DIR")"
+    if [ ! -d "$PJ_CACHE_DIR" ]; then
+        git clone --depth=1 --branch "${PJ_VERSION}" \
+            https://github.com/pjsip/pjproject.git "$PJ_CACHE_DIR"
+    fi
+
+    cd "$PJ_CACHE_DIR"
+
+    if [ ! -f .gsipper-built ]; then
+        # Static build keeps the resulting _pjsua2.so self-contained,
+        # so we don't have to install pjproject system libs.
+        CFLAGS="-fPIC -O2 -DPJ_AUTOCONF=1" ./configure \
+            --disable-video --disable-libwebrtc --disable-ffmpeg
+        make dep
+        make
+        touch .gsipper-built
+    fi
+
+    cd pjsip-apps/src/swig/python
+    make
+    "$PYTHON" setup.py install --user
+
+    cd "$SCRIPT_DIR"
+
+    if ! "$PYTHON" -c "import pjsua2" >/dev/null 2>&1; then
+        echo "error: pjsua2 build appeared to succeed but module is still" >&2
+        echo "       not importable. Check $HOME/.local/lib/python*/site-packages/" >&2
+        return 1
+    fi
+
+    echo
+    echo "==> pjsua2 installed to user site-packages."
 }
 
 install_icon() {
@@ -74,12 +160,15 @@ case "${1:-}" in
     --deps)
         install_deps
         ;;
+    --pjsua2)
+        build_pjsip
+        ;;
     --run)
         shift || true
         run_app "$@"
         ;;
     --help|-h)
-        sed -n '2,11p' "$0"
+        sed -n '2,15p' "$0"
         ;;
     *)
         install_deps
