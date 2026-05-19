@@ -71,6 +71,7 @@ class MainWindow(_BaseWindow):
         self.contacts = ContactsView()
         self.contacts.connect("call-requested", self._on_contact_call)
         self.calls = CallsView()
+        self.calls.connect("redial-requested", self._on_redial_requested)
         self.messages = MessagesView()
 
         if _USE_ADW:
@@ -301,6 +302,13 @@ class MainWindow(_BaseWindow):
         """ContactsView.call-requested: route through the dialer flow."""
         self.dialer.set_number(target)
         self._on_dial_requested(self.dialer, target)
+
+    def _on_redial_requested(self, _view, target: str) -> None:
+        """Calls history row activated: pre-fill the dialer and switch
+        to the Dialer tab so the user can review and press Call."""
+        self.dialer.set_number(target)
+        if _USE_ADW and hasattr(self, "_stack"):
+            self._stack.set_visible_child_name("dialer")
 
     def _on_call_state(self, call, state: str) -> None:
         logger.info("UI call state: %s peer=%s", state,
