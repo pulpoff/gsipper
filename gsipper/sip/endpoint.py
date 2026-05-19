@@ -106,6 +106,15 @@ class SipEndpoint:
         self._reg_handler: Optional[RegStateHandler] = None
         self._call_state_handler = None  # type: Optional[Callable]
         self._active_call = None  # type: Optional["SipCall"]
+        # PJSUA2's Python wrapper releases the underlying pj_call as
+        # soon as the last Python reference goes away. Setting
+        # _active_call=None at the 'ended' state can therefore trigger
+        # GC BEFORE pjsua2 has finished delivering the BYE on the wire
+        # — the remote / provider then keeps the dialog open.
+        # We park ended calls here for a few seconds to let PJSIP's
+        # post-disconnect cleanup (BYE retransmits, TXN settle, RTP
+        # teardown) complete before GC.
+        self._call_graveyard: List = []
         self._pj_log_bridge = None  # must outlive the endpoint
         if not HAVE_PJSUA2:
             logger.error(
@@ -210,6 +219,8 @@ class SipEndpoint:
     def shutdown(self) -> None:
         with self._lock:
             self._teardown_account_locked()
+            # Drop graveyard references; pjsua2 is going down anyway.
+            self._call_graveyard.clear()
             if self._ep is not None:
                 try:
                     self._ep.libDestroy()
@@ -340,6 +351,11 @@ class SipEndpoint:
             self._record_history(call)
             if call is self._active_call:
                 self._active_call = None
+            # Hold a reference so PJSIP can finish BYE/200 OK + TXN
+            # cleanup before SWIG drops pj_call. 5 s is plenty for any
+            # sane RTT.
+            self._call_graveyard.append(call)
+            GLib.timeout_add_seconds(5, self._reap_call, call)
         if self._call_state_handler is not None:
             try:
                 self._call_state_handler(call, state)
@@ -347,6 +363,13 @@ class SipEndpoint:
                 import traceback
                 traceback.print_exc()
         return False  # GLib.idle_add: do not repeat
+
+    def _reap_call(self, call) -> bool:
+        try:
+            self._call_graveyard.remove(call)
+        except ValueError:
+            pass
+        return False  # one-shot timer
 
     @staticmethod
     def _record_history(call) -> None:
