@@ -86,12 +86,16 @@ if HAVE_PJSUA2:
             self.started_at: float = time.time()
             self.connected_at: Optional[float] = None
             self.ended_at: Optional[float] = None
-            # Recording: if record_to is a WAV path, _maybe_start_recording
-            # in onCallMediaState wires both directions to a recorder; the
-            # endpoint converts to mp3 on disconnect.
+            # Recording: only starts once the call reaches CONNECTED
+            # (so we never persist a WAV for a call that was cancelled
+            # while ringing). Audio media references that come up during
+            # EARLY are cached here so onCallState can start the
+            # recorder the moment the call truly answers.
             self.record_to: Optional[str] = record_to
             self._recorder = None  # type: ignore[assignment]
             self._recorder_started = False
+            self._cached_call_audio = None
+            self._cached_mic_audio = None
 
         # --------------------------------------------------------------
         # pjsua2 callbacks
@@ -114,6 +118,16 @@ if HAVE_PJSUA2:
             self.state = mapped
             if mapped == STATE_CONNECTED and self.connected_at is None:
                 self.connected_at = time.time()
+                # Audio media may have come up during EARLY already;
+                # if so its references are cached on the call and we
+                # can start the recorder now that the call has truly
+                # been answered.
+                if self._cached_call_audio is not None \
+                        and self._cached_mic_audio is not None:
+                    self._maybe_start_recording(
+                        self._cached_call_audio,
+                        self._cached_mic_audio,
+                    )
             if mapped == STATE_ENDED and self.ended_at is None:
                 self.ended_at = time.time()
             logger.info("call state: %s peer=%s code=%s reason=%s",
@@ -149,7 +163,14 @@ if HAVE_PJSUA2:
                     mic.startTransmit(aud)
                     aud.startTransmit(spk)
                     logger.info("audio media connected (idx=%d)", idx)
-                    self._maybe_start_recording(aud, mic)
+                    # Cache for onCallState in case audio came up before
+                    # the call reached CONFIRMED (early media).
+                    self._cached_call_audio = aud
+                    self._cached_mic_audio = mic
+                    # Only record once the call is actually answered;
+                    # ringing / early-media audio never lands in a WAV.
+                    if self.state == STATE_CONNECTED:
+                        self._maybe_start_recording(aud, mic)
                 except Exception as exc:
                     logger.error("audio media setup failed: %s", exc)
 
