@@ -66,6 +66,7 @@ class MainWindow(_BaseWindow):
         self.dialer.connect("call-requested", self._on_dial_requested)
         self.dialer.connect("hangup-requested", self._on_hangup_requested)
         self.contacts = ContactsView()
+        self.contacts.connect("call-requested", self._on_contact_call)
         self.calls = CallsView()
         self.messages = MessagesView()
 
@@ -287,6 +288,11 @@ class MainWindow(_BaseWindow):
 
     def _on_hangup_requested(self, *_args) -> None:
         self._sip.hangup_active()
+
+    def _on_contact_call(self, _view, target: str) -> None:
+        """ContactsView.call-requested: route through the dialer flow."""
+        self.dialer.set_number(target)
+        self._on_dial_requested(self.dialer, target)
 
     def _on_call_state(self, call, state: str) -> None:
         logger.info("UI call state: %s peer=%s", state,
