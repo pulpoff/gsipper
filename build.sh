@@ -144,6 +144,29 @@ build_pjsip() {
     echo "==> pjsua2 installed to user site-packages."
 }
 
+install_extension() {
+    # Copy the GNOME Shell extension into ~/.local/share/gnome-shell/extensions
+    # if it isn't already there. Idempotent and never overwrites a user-edited
+    # copy. The extension only adds the top-bar dot — gsipper itself works
+    # without it.
+    local uuid="gsipper@pulpoff.com"
+    local src="$SCRIPT_DIR/extension"
+    local dst="$HOME/.local/share/gnome-shell/extensions/$uuid"
+
+    [ -d "$src" ] || return 0
+    if [ -d "$dst" ] || [ -L "$dst" ]; then
+        return 0
+    fi
+    mkdir -p "$(dirname "$dst")"
+    cp -r "$src" "$dst"
+    echo
+    echo "GNOME extension installed at $dst"
+    echo "To enable:"
+    echo "  gnome-extensions enable $uuid"
+    echo "(GNOME 45-48; you may need to restart the Shell — Alt+F2, r, Enter on X11,"
+    echo " or log out/in on Wayland.)"
+}
+
 install_icon() {
     local icon_src="$SCRIPT_DIR/gsipper/resources/gsipper.svg"
     local desktop_src="$SCRIPT_DIR/gsipper/resources/com.pulpoff.gsipper.desktop"
@@ -179,6 +202,7 @@ case "${1:-}" in
     *)
         install_deps
         install_icon
+        install_extension
         run_app "$@"
         ;;
 esac

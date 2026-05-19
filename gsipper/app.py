@@ -26,6 +26,7 @@ except (ValueError, ImportError):
 from gi.repository import Gdk, Gio, Gtk  # noqa: E402
 
 from . import log as gslog
+from .dbus import StatusService
 from .widgets.window import MainWindow
 
 
@@ -42,6 +43,7 @@ class GsipperApp(_BaseApp):
             flags=Gio.ApplicationFlags.HANDLES_COMMAND_LINE,
         )
         self._window: MainWindow | None = None
+        self._status_service: StatusService | None = None
         self.connect("command-line", self._on_command_line)
 
     def do_startup(self) -> None:
@@ -77,6 +79,30 @@ class GsipperApp(_BaseApp):
                     provider,
                     Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION,
                 )
+
+    def do_dbus_register(self, connection, object_path):
+        # Called once GApplication has its session bus connection.
+        # Register the status service on the same connection so the
+        # GNOME-shell extension can talk to us at our existing app-id.
+        try:
+            self._status_service = StatusService(
+                connection,
+                on_show=lambda: self._on_show_main(None, None),
+                on_quit=lambda: self.quit(),
+            )
+        except Exception:
+            self._status_service = None
+        return _BaseApp.do_dbus_register(self, connection, object_path)
+
+    def do_dbus_unregister(self, connection, object_path):
+        if self._status_service is not None:
+            self._status_service.shutdown()
+            self._status_service = None
+        return _BaseApp.do_dbus_unregister(self, connection, object_path)
+
+    @property
+    def status_service(self) -> "StatusService | None":
+        return self._status_service
 
     def do_activate(self) -> None:
         self._ensure_window().present()

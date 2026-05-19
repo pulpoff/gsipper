@@ -1,0 +1,7 @@
+{
+  "uuid": "gsipper@pulpoff.com",
+  "name": "gsipper status",
+  "description": "Top-bar status indicator and quick menu for the gsipper SIP client. Shows the registration status as a coloured phone icon (green online / yellow connecting / red offline) and announces incoming calls.",
+  "shell-version": ["45", "46", "47", "48"],
+  "url": "https://github.com/pulpoff/gsipper"
+}
