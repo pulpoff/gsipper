@@ -2,6 +2,23 @@
    Primary  : rgb(47, 30, 80)
    Secondary: rgba(47, 30, 80, 0.4) */
 
+.status-dot {
+    min-width: 10px;
+    min-height: 10px;
+    border-radius: 6px;
+    margin: 0 4px;
+}
+.status-dot.online {
+    background-color: #2ec27e;   /* GNOME success green */
+    box-shadow: 0 0 4px rgba(46, 194, 126, 0.6);
+}
+.status-dot.connecting {
+    background-color: #e5a50a;   /* GNOME warning yellow */
+}
+.status-dot.offline {
+    background-color: #c01c28;   /* GNOME error red */
+}
+
 .dialer-number {
     font-size: 20pt;
     padding: 8px 12px;
