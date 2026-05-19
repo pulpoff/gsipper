@@ -22,7 +22,7 @@ try:
 except (ValueError, ImportError):
     pass
 
-from gi.repository import Gtk  # noqa: E402
+from gi.repository import GObject, Gtk  # noqa: E402
 
 from ..storage.history import CallRecord, load_history
 
@@ -89,6 +89,12 @@ def _direction_icon(record: CallRecord) -> Gtk.Image:
 
 
 class CallsView(Gtk.Box):
+    __gsignals__ = {
+        # Fired when a history row is activated; payload is the dial
+        # target (sip_uri if present, else the displayed peer).
+        "redial-requested": (GObject.SignalFlags.RUN_FIRST, None, (str,)),
+    }
+
     def __init__(self) -> None:
         super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=0)
 
@@ -145,6 +151,9 @@ class CallsView(Gtk.Box):
     # Row factory
     # ------------------------------------------------------------------
 
+    def _redial_target(self, record: CallRecord) -> str:
+        return record.peer_uri or record.peer or ""
+
     def _build_row(self, record: CallRecord):
         if _USE_ADW:
             row = Adw.ActionRow(
@@ -152,6 +161,11 @@ class CallsView(Gtk.Box):
                 subtitle=_row_subtitle(record),
             )
             row.add_prefix(_direction_icon(record))
+            target = self._redial_target(record)
+            if target:
+                row.set_activatable(True)
+                row.connect("activated",
+                            lambda *_: self.emit("redial-requested", target))
             return row
 
         # Fallback for vanilla Gtk
@@ -170,4 +184,10 @@ class CallsView(Gtk.Box):
         sub.add_css_class("caption")
         text.append(sub)
         box.append(text)
+        target = self._redial_target(record)
+        if target:
+            click = Gtk.GestureClick()
+            click.connect("released",
+                          lambda *_: self.emit("redial-requested", target))
+            box.add_controller(click)
         return box

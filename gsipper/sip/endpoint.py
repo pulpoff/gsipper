@@ -44,10 +44,18 @@ RegStateHandler = Callable[[bool, int, str], None]
 if HAVE_PJSUA2:
 
     class _Account(pj.Account):
-        def __init__(self, on_reg_state: RegStateHandler, on_incoming) -> None:
+        def __init__(
+            self,
+            on_reg_state: RegStateHandler,
+            on_incoming,
+            on_instant_message,
+            on_instant_message_status,
+        ) -> None:
             super().__init__()
             self._on_reg_state = on_reg_state
             self._on_incoming = on_incoming
+            self._on_instant_message = on_instant_message
+            self._on_instant_message_status = on_instant_message_status
 
         def onRegState(self, prm):  # noqa: N802 (pjsua2 naming)
             try:
@@ -68,6 +76,34 @@ if HAVE_PJSUA2:
                 logger.error("onIncomingCall: missing callId")
                 return
             self._on_incoming(self, call_id)
+
+        def onInstantMessage(self, prm):  # noqa: N802
+            try:
+                from_uri = str(prm.fromUri or "")
+                content = str(prm.msgBody or "")
+                content_type = str(getattr(prm, "contentType", "text/plain") or "")
+            except Exception as exc:
+                logger.error("onInstantMessage parse failed: %s", exc)
+                return
+            logger.info("instant message from %s: %d chars",
+                        from_uri, len(content))
+            GLib.idle_add(self._on_instant_message, from_uri, content, content_type)
+
+        def onInstantMessageStatus(self, prm):  # noqa: N802
+            try:
+                to_uri = str(prm.toUri or "")
+                user_data = str(getattr(prm, "userData", "") or "")
+                status_code = int(getattr(prm, "code", 0))
+                reason = str(getattr(prm, "reason", "") or "")
+            except Exception as exc:
+                logger.error("onInstantMessageStatus parse failed: %s", exc)
+                return
+            logger.info("message status to %s: %s %s (id=%s)",
+                        to_uri, status_code, reason, user_data)
+            GLib.idle_add(
+                self._on_instant_message_status,
+                user_data, status_code, reason,
+            )
 
 
     class _PjLogBridge(pj.LogWriter):
@@ -105,6 +141,8 @@ class SipEndpoint:
         self._unavailable_codecs: List[str] = []
         self._reg_handler: Optional[RegStateHandler] = None
         self._call_state_handler = None  # type: Optional[Callable]
+        self._message_handler = None  # type: Optional[Callable]
+        self._message_status_handler = None  # type: Optional[Callable]
         self._active_call = None  # type: Optional["SipCall"]
         # PJSUA2's Python wrapper releases the underlying pj_call as
         # soon as the last Python reference goes away. Setting
@@ -150,6 +188,34 @@ class SipEndpoint:
     def set_call_state_handler(self, handler) -> None:
         """handler(call: SipCall, state: str) — called on GTK main thread."""
         self._call_state_handler = handler
+
+    def set_message_handler(self, handler) -> None:
+        """handler(from_uri: str, body: str, content_type: str) — GTK thread."""
+        self._message_handler = handler
+
+    def set_message_status_handler(self, handler) -> None:
+        """handler(message_id: str, status_code: int, reason: str) — GTK thread."""
+        self._message_status_handler = handler
+
+    def send_message(self, to_uri: str, body: str, message_id: str = "") -> bool:
+        """Send a SIP MESSAGE. Returns True on submit (not delivery)."""
+        if not HAVE_PJSUA2 or self._account is None:
+            logger.error("send_message: no registered account")
+            return False
+        try:
+            prm = pj.SendInstantMessageParam()
+            prm.toUri = to_uri
+            prm.contentType = "text/plain"
+            prm.content = body
+            if message_id:
+                prm.userData = message_id
+            self._account.sendInstantMessage(prm)
+            logger.info("MESSAGE submitted to %s (id=%s, %d chars)",
+                        to_uri, message_id or "-", len(body))
+            return True
+        except Exception as exc:
+            logger.error("send_message failed: %s", exc, exc_info=True)
+            return False
 
     @property
     def active_call(self):
@@ -212,6 +278,8 @@ class SipEndpoint:
             self._account = _Account(
                 self._on_reg_state_internal,
                 self._on_incoming_call_internal,
+                self._on_instant_message_internal,
+                self._on_instant_message_status_internal,
             )
             acfg = self._build_account_config(settings)
             self._account.create(acfg)
@@ -412,6 +480,24 @@ class SipEndpoint:
                         direction, record.peer, duration, status)
         except Exception as exc:
             logger.error("history: failed to append: %s", exc)
+
+    def _on_instant_message_internal(self, from_uri: str, body: str, content_type: str) -> bool:
+        if self._message_handler is not None:
+            try:
+                self._message_handler(from_uri, body, content_type)
+            except Exception:
+                import traceback
+                traceback.print_exc()
+        return False
+
+    def _on_instant_message_status_internal(self, message_id: str, code: int, reason: str) -> bool:
+        if self._message_status_handler is not None:
+            try:
+                self._message_status_handler(message_id, code, reason)
+            except Exception:
+                import traceback
+                traceback.print_exc()
+        return False
 
     def _on_incoming_call_internal(self, account, call_id: int) -> None:
         """Wrap the incoming call as a SipCall, send 180 Ringing, then
