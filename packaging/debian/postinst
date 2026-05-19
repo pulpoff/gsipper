@@ -32,23 +32,7 @@ import pjsua2  # noqa
 " 2>&1 >/dev/null || true)"
 
     if [ -n "$pjsua2_error" ]; then
-        case "$pjsua2_error" in
-        *libbcg729*)
-            cat <<EOF
-
-  NOTE: the PJSUA2 Python bindings need libbcg729 for G.729 support
-  and it is not installed. Either install it:
-
-      sudo apt install libbcg729-0
-
-  or rebuild gsipper's pjsua2 without the G.729 codec:
-
-      sudo gsipper --install-pjsua2
-
-EOF
-            ;;
-        *)
-            cat <<EOF
+        cat <<EOF
 
   NOTE: the PJSUA2 Python bindings are not importable
   ($pjsua2_error). gsipper will start but cannot place
@@ -59,8 +43,6 @@ EOF
   (one-time, ~5 min, ~150 MB cache under ~/.cache/gsipper).
 
 EOF
-            ;;
-        esac
     fi
 
     cat <<EOF

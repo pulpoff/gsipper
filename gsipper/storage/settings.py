@@ -24,20 +24,7 @@ def default_codecs() -> List[dict]:
         {"id": "G7221/16000",  "name": "G.722.1",             "enabled": True},
         {"id": "PCMA/8000",    "name": "G.711 a-law (PCMA)",  "enabled": True},
         {"id": "PCMU/8000",    "name": "G.711 µ-law (PCMU)",  "enabled": True},
-        # G.729 needs libbcg729 at runtime. The deb makes that
-        # library a Recommends, not a Depends, so the codec is off
-        # by default; the Account dialog grays it out if pjsua2's
-        # codec list doesn't include it.
-        {"id": "G729/8000",    "name": "G.729 (bcg729)",      "enabled": False},
         {"id": "GSM/8000",     "name": "GSM Full-Rate",       "enabled": True},
-        {"id": "G726-32/8000", "name": "G.726-32",            "enabled": True},
-        {"id": "G726-24/8000", "name": "G.726-24",            "enabled": True},
-        {"id": "G726-16/8000", "name": "G.726-16",            "enabled": True},
-        {"id": "G726-40/8000", "name": "G.726-40",            "enabled": True},
-        # G.723.1 is patent-restricted and not bundled with PJSIP;
-        # listing it here surfaces it in the codec UI but pjsua2 will
-        # report it 'unavailable' unless a commercial impl is linked.
-        {"id": "G723/8000",    "name": "G.723.1",             "enabled": False},
     ]
 
 
@@ -85,6 +72,20 @@ def _dataclass_from_dict(cls, data: dict):
     return cls(**{k: v for k, v in data.items() if k in valid})
 
 
+# Codecs that used to appear in default_codecs() but have been
+# retired. _sanitize_codecs strips them out of any settings.json the
+# user upgraded from. Keep this list narrow — anything still in
+# default_codecs() must NOT be listed here.
+_RETIRED_CODEC_IDS = frozenset({
+    "G729/8000",     # bcg729 dropped — too much external-lib churn
+    "G726-32/8000",
+    "G726-24/8000",
+    "G726-16/8000",
+    "G726-40/8000",
+    "G723/8000",     # patent-restricted, never bundled
+})
+
+
 def _sanitize_codecs(raw) -> List[dict]:
     defaults = default_codecs()
     if not isinstance(raw, list):
@@ -95,7 +96,7 @@ def _sanitize_codecs(raw) -> List[dict]:
         if not isinstance(item, dict):
             continue
         cid = item.get("id")
-        if not cid:
+        if not cid or str(cid) in _RETIRED_CODEC_IDS:
             continue
         name = item.get("name") or cid
         cleaned.append({
