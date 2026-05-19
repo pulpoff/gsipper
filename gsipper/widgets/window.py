@@ -79,9 +79,14 @@ class MainWindow(_BaseWindow):
         menu_button.set_menu_model(menu_model)
         header.pack_end(menu_button)
 
-        self._status_label = Gtk.Label(label="Offline")
-        self._status_label.add_css_class("dim-label")
-        header.pack_start(self._status_label)
+        # Tiny coloured dot: green = online, yellow = connecting,
+        # red = offline / error. Real text goes in the tooltip.
+        self._status_dot = Gtk.Box()
+        self._status_dot.set_valign(Gtk.Align.CENTER)
+        self._status_dot.set_size_request(12, 12)
+        self._status_dot.add_css_class("status-dot")
+        self._status_dot.add_css_class("offline")
+        header.pack_start(self._status_dot)
 
         stack = Adw.ViewStack()
         stack.add_titled_with_icon(self.dialer, "dialer", "Dialer", "input-dialpad-symbolic")
@@ -179,32 +184,36 @@ class MainWindow(_BaseWindow):
                 tip += f"\n\n{PJSUA2_IMPORT_ERROR}"
             logger.error("SIP backend missing: %s",
                          PJSUA2_IMPORT_ERROR or "module not found")
-            self._set_status("No SIP backend", "error", tooltip=tip)
+            self._set_status("offline", tooltip=tip)
             return
         if not self._settings.account.enabled:
-            self._set_status("Offline", None)
+            self._set_status("offline", tooltip="Account disabled")
             try:
                 self._sip.configure_account(self._settings.account)
             except Exception:
                 pass
             return
-        self._set_status("Connecting…", "warning")
+        self._set_status("connecting", tooltip="Registering…")
         try:
             self._sip.configure_account(self._settings.account)
         except Exception as exc:
-            self._set_status("Error", "error", tooltip=str(exc))
+            self._set_status("offline", tooltip=str(exc))
 
     def _on_reg_state(self, active: bool, code: int, reason: str) -> None:
         logger.info("status: active=%s code=%s reason=%s", active, code, reason)
         if active:
-            tip = self._codec_tooltip()
-            self._set_status("Online", "success", tooltip=tip)
+            tip = "Online"
+            codec_tip = self._codec_tooltip()
+            if codec_tip:
+                tip += "\n" + codec_tip
+            self._set_status("online", tooltip=tip)
         elif code >= 400:
-            self._set_status(f"Error {code}", "error", tooltip=reason)
+            self._set_status("offline", tooltip=f"Error {code}: {reason}")
         elif not self._settings.account.enabled:
-            self._set_status("Offline", None)
+            self._set_status("offline", tooltip="Account disabled")
         else:
-            self._set_status("Connecting…", "warning", tooltip=reason or None)
+            self._set_status("connecting",
+                             tooltip=f"Registering… {reason}" if reason else "Registering…")
 
     def _codec_tooltip(self) -> str:
         enabled = self._sip.enabled_codecs
@@ -216,15 +225,15 @@ class MainWindow(_BaseWindow):
             parts.append("Unavailable: " + ", ".join(unavail))
         return "\n".join(parts) if parts else ""
 
-    def _set_status(self, text: str, css: str | None, tooltip: str | None = None) -> None:
-        if not hasattr(self, "_status_label"):
+    def _set_status(self, state: str, tooltip: str | None = None) -> None:
+        """state: 'online', 'connecting', or 'offline'."""
+        if not hasattr(self, "_status_dot"):
             return
-        label = self._status_label
-        label.set_text(text)
-        for c in ("success", "warning", "error", "dim-label"):
-            label.remove_css_class(c)
-        label.add_css_class(css if css else "dim-label")
-        label.set_tooltip_text(tooltip or "")
+        dot = self._status_dot
+        for c in ("online", "connecting", "offline"):
+            dot.remove_css_class(c)
+        dot.add_css_class(state)
+        dot.set_tooltip_text(tooltip or state.capitalize())
 
     def _on_window_close(self, *_args) -> bool:
         try:
