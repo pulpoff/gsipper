@@ -358,14 +358,18 @@ class MainWindow(_BaseWindow):
         self._sip.set_registration(False)
 
     def _action_reconnect(self, *_args) -> None:
-        # Plain refresh — calling setRegistration(True) on an already-
-        # registered account sends a fresh REGISTER. We used to do
-        # set_registration(False) then (True), but PJSIP raises
-        # pjsua2.Error if a (True) follows a (False) before the
-        # un-REGISTER transaction has settled.
+        # 'setRegistration(True)' on an already-registered account
+        # often short-circuits inside PJSIP — it returns the cached
+        # 200 OK without putting a fresh REGISTER on the wire (user
+        # log: setRegistration(True) submitted -> active=True 200 OK
+        # in the same wall-clock second). Force a real reconnect by
+        # going through the full configure_account path: it unregisters
+        # the existing account, tears it down, builds a new pjsua2
+        # Account and registers fresh.
         if self._sip is None:
             return
-        self._sip.set_registration(True)
+        self._set_status("connecting", tooltip="Reconnecting…")
+        self._sip.configure_account(self._settings.account)
 
     def _on_window_close(self, *_args) -> bool:
         """X button: hide to tray. SIP keeps running so we still ring on
