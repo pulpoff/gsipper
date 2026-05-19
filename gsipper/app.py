@@ -25,6 +25,7 @@ except (ValueError, ImportError):
 
 from gi.repository import Gdk, Gio, Gtk  # noqa: E402
 
+from . import log as gslog
 from .widgets.window import MainWindow
 
 
@@ -91,6 +92,7 @@ class GsipperApp(_BaseApp):
 def main(argv: List[str] | None = None) -> int:
     if argv is None:
         argv = sys.argv
+    gslog.setup_logging()
     try:
         app = GsipperApp()
         return app.run(argv)

@@ -12,19 +12,26 @@ priorities (highest = first row).
 
 from __future__ import annotations
 
+import logging
 import threading
 from typing import Callable, List, Optional
 
 from gi.repository import GLib
 
+PJSUA2_IMPORT_ERROR: Optional[str] = None
 try:
     import pjsua2 as pj
     HAVE_PJSUA2 = True
-except ImportError:
+except Exception as _exc:  # ImportError, but also catches loader errors
     pj = None  # type: ignore
     HAVE_PJSUA2 = False
+    PJSUA2_IMPORT_ERROR = f"{type(_exc).__name__}: {_exc}"
 
 from ..storage.settings import AccountSettings
+
+
+logger = logging.getLogger(__name__)
+pj_logger = logging.getLogger("gsipper.pjsua2")
 
 
 RegStateHandler = Callable[[bool, int, str], None]
@@ -45,7 +52,30 @@ if HAVE_PJSUA2:
                 reason = str(info.regStatusText or "")
             except Exception as exc:  # pjsua2 can raise here on teardown
                 active, code, reason = False, 0, str(exc)
+            logger.info("registration state: active=%s code=%s reason=%s",
+                        active, code, reason)
             GLib.idle_add(self._on_reg_state, active, code, reason)
+
+
+    class _PjLogBridge(pj.LogWriter):
+        """Bridge pjsua2's log stream into the Python logger."""
+
+        def write(self, entry):  # noqa: N802 (pjsua2 naming)
+            try:
+                msg = str(getattr(entry, "msg", "") or "").rstrip()
+                level = int(getattr(entry, "level", 3))
+            except Exception:
+                return
+            if not msg:
+                return
+            if level <= 1:
+                pj_logger.error(msg)
+            elif level == 2:
+                pj_logger.warning(msg)
+            elif level == 3:
+                pj_logger.info(msg)
+            else:
+                pj_logger.debug(msg)
 
 
 class SipEndpoint:
@@ -61,6 +91,12 @@ class SipEndpoint:
         self._enabled_codecs: List[str] = []
         self._unavailable_codecs: List[str] = []
         self._reg_handler: Optional[RegStateHandler] = None
+        self._pj_log_bridge = None  # must outlive the endpoint
+        if not HAVE_PJSUA2:
+            logger.error(
+                "pjsua2 unavailable: %s — install python3-pjsua2",
+                PJSUA2_IMPORT_ERROR or "module not found",
+            )
 
     @classmethod
     def get(cls) -> "SipEndpoint":
@@ -90,10 +126,17 @@ class SipEndpoint:
     def configure_account(self, settings: AccountSettings) -> None:
         """Start the endpoint if needed and (re)register the account."""
         if not HAVE_PJSUA2:
+            logger.error("configure_account: pjsua2 missing (%s)",
+                         PJSUA2_IMPORT_ERROR or "unknown")
             raise RuntimeError(
                 "python3-pjsua2 is not installed. "
                 "Run `sudo apt install python3-pjsua2`."
             )
+        logger.info(
+            "configure_account: server=%s user=%s transport=%s stun=%s enabled=%s",
+            settings.server, settings.username, settings.transport,
+            settings.stun_server or "-", settings.enabled,
+        )
         with self._lock:
             self._ensure_started(settings.transport, settings.stun_server)
             self._configure_codecs(settings.codecs)
@@ -124,11 +167,19 @@ class SipEndpoint:
     def _ensure_started(self, transport: str, stun_server: str = "") -> None:
         if self._started:
             return
+        logger.info("starting pjsua2 endpoint transport=%s stun=%s",
+                    transport, stun_server or "-")
         ep = pj.Endpoint()
         ep.libCreate()
 
         ep_cfg = pj.EpConfig()
-        ep_cfg.logConfig.level = 3
+        ep_cfg.logConfig.level = 4
+        ep_cfg.logConfig.consoleLevel = 0  # avoid double-printing on stderr
+        try:
+            self._pj_log_bridge = _PjLogBridge()
+            ep_cfg.logConfig.writer = self._pj_log_bridge
+        except Exception as exc:
+            logger.warning("could not install pjsua2 log writer: %s", exc)
         ep_cfg.uaConfig.userAgent = "gsipper/0.1"
         if stun_server:
             ep_cfg.uaConfig.stunServer.append(stun_server)
@@ -146,6 +197,7 @@ class SipEndpoint:
         ep.libStart()
         self._ep = ep
         self._started = True
+        logger.info("pjsua2 endpoint started")
 
     def _configure_codecs(self, codec_settings: list) -> None:
         """Apply the user's codec list to pjsua2.
@@ -178,6 +230,8 @@ class SipEndpoint:
 
         self._enabled_codecs = enabled_ids
         self._unavailable_codecs = unavailable
+        logger.info("codecs enabled: %s; unavailable: %s",
+                    enabled_ids or "-", unavailable or "-")
 
     def _build_account_config(self, s: AccountSettings) -> "pj.AccountConfig":
         domain = s.domain or s.server
