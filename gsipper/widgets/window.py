@@ -391,6 +391,15 @@ class MainWindow(_BaseWindow):
     def _action_connect(self, *_args) -> None:
         if self._sip is None:
             return
+        # Connect from the status menu should ALSO flip the persisted
+        # 'Account > Enabled' toggle back on; otherwise the dialog
+        # would still report 'off' and the next launch would come up
+        # offline. The user's intent is clearly: be online from now
+        # on, not just for this run.
+        if not self._settings.account.enabled:
+            self._settings.account.enabled = True
+            save_settings(self._settings)
+            logger.info("Connect: re-enabling disabled account in settings")
         self._user_disconnected = False
         self._set_status("connecting", tooltip="Connecting…")
         self._sip.set_registration(True)
@@ -414,9 +423,14 @@ class MainWindow(_BaseWindow):
         # in the same wall-clock second). Force a real reconnect by
         # going through the full configure_account path: it unregisters
         # the existing account, tears it down, builds a new pjsua2
-        # Account and registers fresh.
+        # Account and registers fresh. Also re-enables the account in
+        # settings if it had been toggled off.
         if self._sip is None:
             return
+        if not self._settings.account.enabled:
+            self._settings.account.enabled = True
+            save_settings(self._settings)
+            logger.info("Reconnect: re-enabling disabled account in settings")
         self._user_disconnected = False
         self._set_status("connecting", tooltip="Reconnecting…")
         self._sip.configure_account(self._settings.account)

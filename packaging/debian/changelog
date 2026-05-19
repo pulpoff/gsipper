@@ -1,3 +1,19 @@
+gsipper (1.0.9-1) unstable; urgency=medium
+
+  * Status-menu Connect / Reconnect now also flip 'Account > Enabled'
+    back on if it had been toggled off there. Previously, if the
+    user disabled the account in Account settings, the status dot
+    menu's Connect would call set_registration(True), the worker
+    fell back to configure_account(load_settings().account), and
+    that saw enabled=False -> 'Not configured', staying offline.
+    Now the window saves the settings change before submitting,
+    so the worker's load_settings() picks up enabled=True and a
+    fresh REGISTER actually fires. The Account dialog also reports
+    Enabled = on next time the user opens it, matching their
+    intent of being online from now on.
+
+ -- pulpoff <noreply@pulpoff.com>  Tue, 19 May 2026 00:00:00 +0000
+
 gsipper (1.0.8-1) unstable; urgency=medium
 
   * Recording now waits for the call to be ANSWERED. Calls cancelled
