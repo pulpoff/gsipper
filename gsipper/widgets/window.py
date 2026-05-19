@@ -49,10 +49,17 @@ _BaseWindow = Adw.ApplicationWindow if _USE_ADW else Gtk.ApplicationWindow
 class MainWindow(_BaseWindow):
     def __init__(self, app) -> None:
         super().__init__(application=app, title="gsipper")
-        self.set_default_size(360, 560)
         self.set_icon_name("gsipper")
 
+        # Restore last-used size (saved on close). Width/height of 0 in
+        # settings means "first run, use the defaults". GTK4 / Wayland
+        # do not let us restore window POSITION — that's the
+        # compositor's job — but size is supported via set_default_size.
         self._settings = load_settings()
+        w = self._settings.general.window_width or 360
+        h = self._settings.general.window_height or 560
+        self.set_default_size(w, h)
+
         # SIP endpoint is created lazily in _init_sip via GLib.idle_add
         # so the window paints before the pjsua2 module loads.
         self._sip = None  # type: ignore[assignment]
@@ -438,7 +445,22 @@ class MainWindow(_BaseWindow):
     def _on_window_close(self, *_args) -> bool:
         """X button: hide to tray. SIP keeps running so we still ring on
         incoming calls. Real quit goes through win.quit / Ctrl+Q / the
-        tray-extension menu, which call app.quit() → do_shutdown."""
+        tray-extension menu, which call app.quit() → do_shutdown.
+
+        We also persist the current size here so the next 'Show
+        gsipper' restores the same proportions. Position is not
+        restored — GTK4 / Wayland doesn't let apps place windows."""
+        w = self.get_width()
+        h = self.get_height()
+        if w > 100 and h > 100 and (
+                w != self._settings.general.window_width
+                or h != self._settings.general.window_height):
+            self._settings.general.window_width = w
+            self._settings.general.window_height = h
+            try:
+                save_settings(self._settings)
+            except OSError:
+                logger.exception("failed to persist window size")
         self.set_visible(False)
         return True  # inhibit destroy
 
