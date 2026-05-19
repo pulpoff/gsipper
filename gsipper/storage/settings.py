@@ -13,13 +13,19 @@ def default_codecs() -> List[dict]:
 
     Each entry has an `id` (pjsua2 codec prefix), a human `name`, and an
     `enabled` flag. Add new families here and they'll show up in the
-    Advanced > Codecs list automatically.
+    Advanced > Codecs list automatically. Codecs that aren't actually
+    available in the running pjsua2 build (e.g. G.729 without libbcg729
+    at build time) are silently skipped and listed in the Advanced
+    'unavailable' tooltip.
     """
     return [
+        {"id": "opus/48000",   "name": "Opus",               "enabled": True},
+        {"id": "G722/16000",   "name": "G.722",              "enabled": True},
         {"id": "PCMA/8000",    "name": "G.711 a-law (PCMA)", "enabled": True},
         {"id": "PCMU/8000",    "name": "G.711 µ-law (PCMU)", "enabled": True},
-        {"id": "G722/16000",   "name": "G.722",              "enabled": True},
-        {"id": "G726-32/8000", "name": "G.726-32",           "enabled": True},
+        {"id": "G729/8000",    "name": "G.729 (bcg729)",     "enabled": True},
+        {"id": "GSM/8000",     "name": "GSM Full-Rate",      "enabled": True},
+        {"id": "G726-32/8000", "name": "G.726-32",           "enabled": False},
     ]
 
 

@@ -49,8 +49,9 @@ PJ_BUILD_DEPS=(
     libasound2-dev
     libpulse-dev
     libssl-dev
-    libopus-dev
+    libopus-dev                            # Opus codec
     libsrtp2-dev
+    libbcg729-dev                          # G.729 (open-source impl)
     uuid-dev
 )
 

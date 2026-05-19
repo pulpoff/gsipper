@@ -1,3 +1,21 @@
+gsipper (1.2.0-1) unstable; urgency=medium
+
+  * Pre-compiled codecs bundled in the .deb: Opus, G.722, G.711
+    a-law / µ-law, G.729 (via libbcg729) and GSM Full-Rate, in
+    addition to the existing G.726-32. The default codec priority
+    list (Account > Advanced > Codecs) now leads with Opus.
+  * build.sh PJ_BUILD_DEPS gains libbcg729-dev so a local
+    './build.sh --pjsua2' picks up G.729 automatically.
+  * debian/control.in Depends gain libbcg729-0 and libgsm1 so the
+    bundled _pjsua2.so loads on the target without further apt
+    installs.
+  * SILK is intentionally not built — it requires Skype's SILK SDK,
+    which is not in Debian repositories.
+  * README: drop the MicroSIP reference in the tagline; gsipper is
+    described straight as a modern native GNOME SIP client.
+
+ -- pulpoff <noreply@pulpoff.com>  Tue, 19 May 2026 00:00:00 +0000
+
 gsipper (1.1.1-1) unstable; urgency=medium
 
   * Delete in Contacts no longer rebuilds every row. The matching
