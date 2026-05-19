@@ -1,3 +1,14 @@
+gsipper (1.3.2-1) unstable; urgency=medium
+
+  * SIP User-Agent header reformatted from 'gsipper <version>' to
+    'gsipper/<version>'. Many SIP-server admin UIs derive the
+    'Device' column from the first space-delimited token, which
+    silently dropped the version. The slash is the RFC 3261
+    product-token form (matches FRITZ!OS / MicroSIP / PJSUA), so
+    the version is now preserved in the server-side display.
+
+ -- pulpoff <noreply@pulpoff.com>  Tue, 19 May 2026 00:00:00 +0000
+
 gsipper (1.3.1-1) unstable; urgency=medium
 
   * Fix './build.sh --pjsua2' leaving a stale 2.14.1 egg on the
