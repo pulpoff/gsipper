@@ -361,12 +361,16 @@ class SipEndpoint:
         duration = int(ended_at - connected_at) if connected_at else 0
         if duration < 0:
             duration = 0
+        last_code = int(getattr(call, "last_status_code", 0))
         if connected_at:
             status = "completed"
         elif direction == "incoming":
-            # Step 4 will distinguish missed vs declined here; for now
-            # we auto-reject everything, so call it "declined".
-            status = "declined"
+            # 486 Busy / 603 Decline = we explicitly declined.
+            # 487 Request Terminated (or 0) = remote cancelled / timed out.
+            if last_code in (486, 603):
+                status = "declined"
+            else:
+                status = "missed"
         else:
             status = "failed"
         record = CallRecord(
@@ -387,13 +391,34 @@ class SipEndpoint:
             logger.error("history: failed to append: %s", exc)
 
     def _on_incoming_call_internal(self, account, call_id: int) -> None:
-        """Incoming call landed. Step 4 will add the ring-in popup; for
-        now we auto-reject with 486 Busy so the dialler stays usable."""
-        from .call import SipCall
+        """Wrap the incoming call as a SipCall, send 180 Ringing, then
+        let onCallState bubble the 'incoming' state up to the UI."""
+        from .call import SipCall, _short_peer
         try:
             call = SipCall(account, self._on_call_state_internal,
                            call_id=call_id, incoming=True)
-            logger.info("incoming call (auto-rejecting until step 4)")
-            call.safe_hangup(486)
+            try:
+                info = call.getInfo()
+                call.peer_uri = str(info.remoteUri or "")
+                call.peer_display = _short_peer(call.peer_uri) or call.peer_uri
+            except Exception:
+                pass
+            logger.info("incoming call from %s", call.peer_display or "?")
+            # Reject second concurrent call with 486 Busy.
+            if self._active_call is not None:
+                logger.info("already in a call; rejecting second incoming")
+                call.safe_hangup(486)
+                return
+            # Send 180 Ringing.
+            try:
+                op = pj.CallOpParam()
+                op.statusCode = 180
+                call.answer(op)
+            except Exception as exc:
+                logger.error("180 Ringing failed: %s", exc)
+            self._active_call = call
+            # The pjsua2 INCOMING state has already fired internally;
+            # mirror it through our handler so the UI shows the popup.
+            self._on_call_state_internal(call, "incoming")
         except Exception as exc:
             logger.error("incoming call handling failed: %s", exc)

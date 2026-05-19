@@ -28,14 +28,17 @@ from .. import log as gslog
 from ..dialogs.account_dialog import AccountDialog
 from ..dialogs.log_dialog import LogDialog
 from ..sip.endpoint import PJSUA2_IMPORT_ERROR, SipEndpoint
+from ..sound import Ringer
 from ..storage.settings import load_settings, save_settings
-
-
-logger = logging.getLogger(__name__)
+from ..tray import TrayIndicator
 from .dialer_view import DialerView
 from .contacts_view import ContactsView
 from .calls_view import CallsView
 from .messages_view import MessagesView
+from .ringin_window import RinginWindow
+
+
+logger = logging.getLogger(__name__)
 
 
 _BaseWindow = Adw.ApplicationWindow if _USE_ADW else Gtk.ApplicationWindow
@@ -51,6 +54,10 @@ class MainWindow(_BaseWindow):
         self._sip = SipEndpoint.get()
         self._sip.set_reg_handler(self._on_reg_state)
         self._sip.set_call_state_handler(self._on_call_state)
+        self._tray = TrayIndicator()
+        self._ringer = Ringer()
+        self._ringin_window: RinginWindow | None = None
+        self._incoming_notification_id = "gsipper-incoming"
 
         self._install_actions(app)
         menu_model = self._build_menu_model()
@@ -217,13 +224,17 @@ class MainWindow(_BaseWindow):
             if codec_tip:
                 tip += "\n" + codec_tip
             self._set_status("online", tooltip=tip)
+            self._tray.set_state("online")
         elif code >= 400:
             self._set_status("offline", tooltip=f"Error {code}: {reason}")
+            self._tray.set_state("offline")
         elif not self._settings.account.enabled:
             self._set_status("offline", tooltip="Account disabled")
+            self._tray.set_state("offline")
         else:
             self._set_status("connecting",
                              tooltip=f"Registering… {reason}" if reason else "Registering…")
+            self._tray.set_state("connecting")
 
     def _codec_tooltip(self) -> str:
         enabled = self._sip.enabled_codecs
@@ -280,12 +291,89 @@ class MainWindow(_BaseWindow):
     def _on_call_state(self, call, state: str) -> None:
         logger.info("UI call state: %s peer=%s", state,
                     getattr(call, "peer_display", ""))
+
+        if state == "incoming":
+            self._open_ringin(call)
+            return
+
         if state == "ended":
+            self._close_ringin()
+            self._ringer.stop()
+            self._withdraw_incoming_notification()
             self.dialer.show_keypad()
             self.calls.refresh()
             return
+
+        # calling / ringing / connected
+        if call is not None and getattr(call, "incoming", False) and state in ("ringing", "connected"):
+            # We answered an incoming call — tear down the ring-in
+            # popup and ringer; the in-call view takes over.
+            self._close_ringin()
+            self._ringer.stop()
+            self._withdraw_incoming_notification()
         peer = getattr(call, "peer_display", "") or "—"
         self.dialer.show_call(peer=peer, state=state)
+        if _USE_ADW and hasattr(self, "_stack"):
+            self._stack.set_visible_child_name("dialer")
+
+    # ------------------------------------------------------------------
+    # Ring-in popup + notification
+    # ------------------------------------------------------------------
+
+    def _open_ringin(self, call) -> None:
+        if self._ringin_window is not None:
+            return
+        peer_display = getattr(call, "peer_display", "") or "Unknown caller"
+        peer_uri = getattr(call, "peer_uri", "") or ""
+        win = RinginWindow(parent=self, peer_display=peer_display, peer_uri=peer_uri)
+        win.connect("answer-requested", self._on_ringin_answer)
+        win.connect("decline-requested", self._on_ringin_decline)
+        self._ringin_window = win
+        win.present()
+        self._ringer.start()
+        self._send_incoming_notification(peer_display)
+
+    def _close_ringin(self) -> None:
+        win = self._ringin_window
+        if win is None:
+            return
+        self._ringin_window = None
+        try:
+            win.close()
+        except Exception:
+            pass
+
+    def _on_ringin_answer(self, *_args) -> None:
+        self._sip.answer_active()
+
+    def _on_ringin_decline(self, *_args) -> None:
+        # 486 Busy Here = explicit decline.
+        self._sip.hangup_active(486)
+
+    def _send_incoming_notification(self, peer_display: str) -> None:
+        app = self.get_application()
+        if app is None:
+            return
+        try:
+            notif = Gio.Notification.new("Incoming call")
+            notif.set_body(peer_display or "Unknown caller")
+            notif.set_priority(Gio.NotificationPriority.URGENT)
+            notif.set_icon(Gio.ThemedIcon.new("call-start-symbolic"))
+            notif.add_button("Answer", "app.answer-incoming")
+            notif.add_button("Decline", "app.decline-incoming")
+            notif.set_default_action("app.show-main")
+            app.send_notification(self._incoming_notification_id, notif)
+        except Exception as exc:
+            logger.warning("notification send failed: %s", exc)
+
+    def _withdraw_incoming_notification(self) -> None:
+        app = self.get_application()
+        if app is None:
+            return
+        try:
+            app.withdraw_notification(self._incoming_notification_id)
+        except Exception:
+            pass
 
     def _build_dial_uri(self, target: str) -> str:
         target = target.strip()
