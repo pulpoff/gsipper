@@ -1,0 +1,51 @@
+#!/bin/sh
+# postinst: refresh icon / desktop caches, hint about pjsua2 + extension.
+set -e
+
+case "$1" in
+configure)
+    # Hicolor icon-theme cache so the launcher icon appears
+    # immediately in the app grid / dock without a relogin.
+    if command -v gtk-update-icon-cache >/dev/null 2>&1; then
+        gtk-update-icon-cache --quiet --ignore-theme-index \
+            /usr/share/icons/hicolor 2>/dev/null || true
+    fi
+    if command -v update-desktop-database >/dev/null 2>&1; then
+        update-desktop-database --quiet /usr/share/applications \
+            2>/dev/null || true
+    fi
+    if command -v glib-compile-schemas >/dev/null 2>&1; then
+        glib-compile-schemas /usr/share/glib-2.0/schemas \
+            2>/dev/null || true
+    fi
+
+    if ! python3 -c "import pjsua2" >/dev/null 2>&1; then
+        cat <<EOF
+
+  NOTE: the PJSUA2 Python bindings are not available system-wide.
+  gsipper will start but cannot place calls until you build them:
+
+      sudo gsipper --install-pjsua2
+
+  (one-time, ~5 min, ~150 MB cache under ~/.cache/gsipper).
+
+EOF
+    fi
+
+    cat <<EOF
+  The GNOME-Shell status-bar extension is installed system-wide at:
+      /usr/share/gnome-shell/extensions/gsipper@pulpoff.com
+
+  Enable it via the Extensions application, or:
+      gnome-extensions enable gsipper@pulpoff.com
+
+  Restart GNOME Shell to pick up the new extension list:
+      - X11   : Alt+F2, type 'r', Enter
+      - Wayland: log out and back in
+
+EOF
+    ;;
+esac
+
+#DEBHELPER#
+exit 0

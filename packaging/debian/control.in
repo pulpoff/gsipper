@@ -1,0 +1,29 @@
+Package: gsipper
+Version: __VERSION__
+Section: net
+Priority: optional
+Architecture: __ARCH__
+Maintainer: pulpoff <noreply@pulpoff.com>
+Homepage: https://github.com/pulpoff/gsipper
+Depends: python3 (>= 3.10),
+         python3-gi,
+         gir1.2-gtk-4.0,
+         gir1.2-adw-1,
+         gir1.2-gsound-1.0,
+         sound-theme-freedesktop
+Recommends: gir1.2-ayatanaappindicator3-0.1,
+            gnome-shell-extension-prefs
+Suggests: python3-pjsua2
+Description: Modern GNOME SIP client
+ gsipper is a Python / GTK4 / libadwaita SIP softphone for the
+ GNOME desktop, in the spirit of MicroSIP. It supports outgoing
+ and incoming calls, a contacts list (with vCard and Google CSV
+ import), per-contact call history, SIP instant messaging and
+ a top-bar status indicator via a bundled GNOME Shell extension.
+ .
+ The PJSUA2 Python bindings are not packaged on Debian/Ubuntu.
+ After installing this package, run:
+   sudo gsipper --install-pjsua2
+ to compile them from source (~5 min, ~150 MB cache under
+ ~/.cache/gsipper/pjproject-2.14.1). The cache is reused across
+ reinstalls and is left in place on package removal.
