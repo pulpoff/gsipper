@@ -4,16 +4,16 @@ Owns the SIP transport, codec configuration and the active account.
 All PJSIP callbacks marshal back to the GTK main loop via GLib.idle_add
 so the rest of the app can pretend SIP is single-threaded.
 
-G.722, G.711 (PCMU+PCMA) and G.726 are always in stock pjproject.
-G.729 is intentionally skipped for now — re-enable by adding
-("G729/8000", 220) to _CODEC_PRIORITIES if you're on a pjproject
-built with bcg729.
+The default codec list (G.711a/u, G.722, G.726) lives in
+gsipper.storage.settings.default_codecs and is editable per-account via
+the Advanced > Codecs list. We translate user order into pjsua2
+priorities (highest = first row).
 """
 
 from __future__ import annotations
 
 import threading
-from typing import Callable, List, Optional, Tuple
+from typing import Callable, List, Optional
 
 from gi.repository import GLib
 
@@ -25,16 +25,6 @@ except ImportError:
     HAVE_PJSUA2 = False
 
 from ..storage.settings import AccountSettings
-
-
-# (codec id prefix, priority). Higher priority = preferred.
-# Priorities below match MicroSIP's default ordering (a-law first).
-_CODEC_PRIORITIES: List[Tuple[str, int]] = [
-    ("PCMA/8000", 250),
-    ("PCMU/8000", 245),
-    ("G722/16000", 240),
-    ("G726-32/8000", 230),
-]
 
 
 RegStateHandler = Callable[[bool, int, str], None]
@@ -105,7 +95,8 @@ class SipEndpoint:
                 "Run `sudo apt install python3-pjsua2`."
             )
         with self._lock:
-            self._ensure_started(settings.transport)
+            self._ensure_started(settings.transport, settings.stun_server)
+            self._configure_codecs(settings.codecs)
             self._teardown_account_locked()
             if not (settings.enabled and settings.server
                     and settings.username and settings.password):
@@ -130,7 +121,7 @@ class SipEndpoint:
     # Internals
     # ------------------------------------------------------------------
 
-    def _ensure_started(self, transport: str) -> None:
+    def _ensure_started(self, transport: str, stun_server: str = "") -> None:
         if self._started:
             return
         ep = pj.Endpoint()
@@ -139,6 +130,8 @@ class SipEndpoint:
         ep_cfg = pj.EpConfig()
         ep_cfg.logConfig.level = 3
         ep_cfg.uaConfig.userAgent = "gsipper/0.1"
+        if stun_server:
+            ep_cfg.uaConfig.stunServer.append(stun_server)
         ep.libInit(ep_cfg)
 
         ttype = {
@@ -153,29 +146,37 @@ class SipEndpoint:
         ep.libStart()
         self._ep = ep
         self._started = True
-        self._configure_codecs()
 
-    def _configure_codecs(self) -> None:
+    def _configure_codecs(self, codec_settings: list) -> None:
+        """Apply the user's codec list to pjsua2.
+
+        codec_settings is the ordered list from AccountSettings.codecs:
+        [{"id": "PCMA/8000", "name": "...", "enabled": True}, ...].
+        Higher-indexed entries get lower priority; disabled entries get
+        priority 0.
+        """
         assert self._ep is not None
-        codecs = self._ep.codecEnum2()
-        # Disable everything first.
-        for c in codecs:
+        available = list(self._ep.codecEnum2())
+
+        for c in available:
             self._ep.codecSetPriority(c.codecId, 0)
 
-        enabled: List[str] = []
-        for c in codecs:
-            for prefix, prio in _CODEC_PRIORITIES:
-                if c.codecId.startswith(prefix):
-                    self._ep.codecSetPriority(c.codecId, prio)
-                    enabled.append(c.codecId)
-                    break
+        enabled_ids: List[str] = []
+        unavailable: List[str] = []
+        for idx, entry in enumerate(codec_settings):
+            if not entry.get("enabled"):
+                continue
+            prefix = entry["id"]
+            priority = max(1, 250 - idx * 10)
+            matches = [c for c in available if c.codecId.startswith(prefix)]
+            if not matches:
+                unavailable.append(prefix)
+                continue
+            for c in matches:
+                self._ep.codecSetPriority(c.codecId, priority)
+                enabled_ids.append(c.codecId)
 
-        available_ids = [c.codecId for c in codecs]
-        unavailable = [
-            prefix for prefix, _ in _CODEC_PRIORITIES
-            if not any(a.startswith(prefix) for a in available_ids)
-        ]
-        self._enabled_codecs = enabled
+        self._enabled_codecs = enabled_ids
         self._unavailable_codecs = unavailable
 
     def _build_account_config(self, s: AccountSettings) -> "pj.AccountConfig":
