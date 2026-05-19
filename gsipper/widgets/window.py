@@ -72,10 +72,7 @@ class MainWindow(_BaseWindow):
         stack.add_titled_with_icon(self.messages, "messages", "Messages", "mail-unread-symbolic")
         self._stack = stack
 
-        switcher = Adw.ViewSwitcher()
-        switcher.set_stack(stack)
-        switcher.set_policy(Adw.ViewSwitcherPolicy.WIDE)
-        header.set_title_widget(switcher)
+        header.set_title_widget(Adw.WindowTitle(title="", subtitle=""))
 
         switcher_bar = Adw.ViewSwitcherBar()
         switcher_bar.set_stack(stack)
