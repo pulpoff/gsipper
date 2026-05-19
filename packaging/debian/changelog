@@ -1,3 +1,20 @@
+gsipper (1.0.3-1) unstable; urgency=medium
+
+  * Status dot becomes a Gtk.MenuButton with a state-dependent menu:
+    Disconnect / Reconnect / Exit when online, Connect / Exit when
+    offline. Reconnect is now a refresh REGISTER (calling
+    setRegistration(True) on an already-registered account); the
+    previous Disconnect-then-Reconnect pattern tripped
+    pjsua2.Error because PJSIP rejects the second call while the
+    un-REGISTER transaction is still settling.
+  * Faster GUI startup. The 40 MB pjsua2 .so and the SipEndpoint
+    singleton are imported / built on the next idle slot AFTER the
+    window paints. The window, tray icon and shell-extension
+    D-Bus property are visible in their initial state ("connecting"
+    or "offline" depending on account configuration) from frame 1.
+
+ -- pulpoff <noreply@pulpoff.com>  Tue, 19 May 2026 00:00:00 +0000
+
 gsipper (1.0.2-1) unstable; urgency=medium
 
   * Settings dialog (start minimized / run on start / record calls).
