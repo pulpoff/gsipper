@@ -113,6 +113,14 @@ class SettingsDialog(Adw.PreferencesDialog):
             self._row_records.set_active(False)
         group.add(self._row_records)
 
+        self._row_messages = Adw.SwitchRow(
+            title="Enable messages",
+            subtitle="Show the Messages tab and accept incoming SIP MESSAGE "
+                     "requests. Off by default.",
+        )
+        self._row_messages.set_active(g.enable_messages)
+        group.add(self._row_messages)
+
         page.add(group)
         self.add(page)
 
@@ -123,6 +131,7 @@ class SettingsDialog(Adw.PreferencesDialog):
             start_minimized=self._row_minimized.get_active(),
             run_on_start=self._row_autostart.get_active(),
             call_records=self._row_records.get_active(),
+            enable_messages=self._row_messages.get_active(),
         )
         # Side-effect: autostart file follows the toggle immediately.
         try:

@@ -51,6 +51,7 @@ class GeneralSettings:
     start_minimized: bool = False   # do_activate skips window.present()
     run_on_start: bool = False      # write ~/.config/autostart/*.desktop
     call_records: bool = False      # record every call to wav, convert to mp3
+    enable_messages: bool = False   # show the Messages tab + SIP IM features
 
 
 @dataclass
