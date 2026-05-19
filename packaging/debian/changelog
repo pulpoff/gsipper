@@ -1,3 +1,15 @@
+gsipper (1.1.1-1) unstable; urgency=medium
+
+  * Delete in Contacts no longer rebuilds every row. The matching
+    Adw.ExpanderRow is now removed from the listbox directly and the
+    JSON save is deferred to the next idle slot, so the confirmation
+    dialog disappears and the row vanishes in the same frame.
+  * Drop the maximize / fullscreen button from the headerbar window
+    controls; the tall dialer pane never benefits from fullscreen.
+    Resize-by-drag is unchanged.
+
+ -- pulpoff <noreply@pulpoff.com>  Tue, 19 May 2026 00:00:00 +0000
+
 gsipper (1.1.0-1) unstable; urgency=medium
 
   * 'Start minimized' actually keeps the window hidden on first

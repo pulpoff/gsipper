@@ -298,9 +298,12 @@ class ContactsView(Gtk.Box):
                 "delete", Adw.ResponseAppearance.DESTRUCTIVE)
             dialog.set_default_response("cancel")
             dialog.set_close_response("cancel")
+            # Defer the actual delete work via idle_add so the
+            # Adw.MessageDialog can finish its close animation first.
             dialog.connect(
                 "response",
-                lambda _d, response: self._on_delete_confirmed(contact, response),
+                lambda _d, response: GLib.idle_add(
+                    self._on_delete_confirmed, contact, response),
             )
             dialog.present()
             return
@@ -332,9 +335,37 @@ class ContactsView(Gtk.Box):
         if response != "delete":
             return
         logger.info("delete contact: %s (%s)", contact.name, contact.id)
+
+        # Drop the contact from memory and remove ONLY the matching row
+        # from the listbox; rebuilding all rows is expensive (each row
+        # is an Adw.ExpanderRow with one sub-row per phone) and used
+        # to make the delete confirmation feel laggy.
         self._contacts = [c for c in self._contacts if c.id != contact.id]
-        contacts_store.save_contacts(self._contacts)
-        self._rebuild_rows()
+        self._remove_row_for(contact.id)
+        if not self._contacts and hasattr(self, "_stack"):
+            self._stack.set_visible_child_name("empty")
+
+        # Persist to disk in the next idle slot so the row disappearance
+        # paints first, before the (cheap but still synchronous) JSON
+        # write happens.
+        GLib.idle_add(self._persist_contacts_idle)
+
+    def _remove_row_for(self, contact_id: str) -> None:
+        child = self._listbox.get_first_child()
+        while child is not None:
+            nxt = child.get_next_sibling()
+            row_contact = getattr(child, "_contact", None)
+            if row_contact is not None and row_contact.id == contact_id:
+                self._listbox.remove(child)
+                return
+            child = nxt
+
+    def _persist_contacts_idle(self) -> bool:
+        try:
+            contacts_store.save_contacts(self._contacts)
+        except Exception:
+            logger.exception("save_contacts failed")
+        return False  # one-shot
 
     # ------------------------------------------------------------------
     # Dialing
