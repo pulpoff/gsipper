@@ -132,7 +132,7 @@ python3 -m gsipper
 
 ```sh
 ./build.sh --deb
-sudo apt install ./dist/gsipper_1.3.4_amd64.deb
+sudo apt install ./dist/gsipper_1.3.5_amd64.deb
 sudo gsipper --install-pjsua2     # compile PJSUA2 bindings (one-time)
 ```
 
@@ -152,6 +152,31 @@ After install, enable the status-bar extension once:
 gnome-extensions enable gsipper@pulpoff.com
 # X11: Alt+F2, type 'r', Enter   |   Wayland: log out and back in
 ```
+
+### Cross-building for arm64
+
+Run the cross-build wrapper from an amd64 host. It spins up an
+Ubuntu 24.04 container under `--platform=linux/arm64`, installs the
+build deps, and runs the normal `./build.sh --pjsua2 && ./build.sh
+--deb` inside — Docker's qemu-user-static integration transparently
+emulates the arm64 ISA, so the bundled `_pjsua2.so` in the resulting
+deb is native to arm64.
+
+```sh
+# One-time host setup:
+sudo apt install docker.io qemu-user-static binfmt-support
+sudo systemctl enable --now docker
+sudo docker run --rm --privileged multiarch/qemu-user-static --reset -p yes
+
+# Then per-arch:
+./packaging/build-cross.sh arm64    # → dist/gsipper_<version>_arm64.deb
+./packaging/build-cross.sh amd64    # same as the plain --deb path
+```
+
+The build takes ~10–15 minutes under qemu emulation (pjproject's
+`make` is the bulk of it). The output lands in the host's `dist/`
+directory and is byte-identical to one you'd build natively on
+arm64 hardware.
 
 ---
 

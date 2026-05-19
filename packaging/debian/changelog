@@ -1,3 +1,17 @@
+gsipper (1.3.5-1) unstable; urgency=medium
+
+  * New packaging/build-cross.sh wrapper for cross-building the
+    arm64 .deb on an amd64 host. Spins up an ubuntu:24.04
+    container under '--platform=linux/arm64', apt-installs the
+    runtime + build deps, runs './build.sh --pjsua2' then
+    './build.sh --deb' inside — Docker's qemu-user-static
+    integration transparently emulates the arm64 ISA so the
+    bundled _pjsua2.so in dist/gsipper_<ver>_arm64.deb is native
+    to arm64. README grows a 'Cross-building for arm64' section
+    with the one-time host setup steps.
+
+ -- pulpoff <noreply@pulpoff.com>  Tue, 19 May 2026 00:00:00 +0000
+
 gsipper (1.3.4-1) unstable; urgency=medium
 
   * Drop the word 'Sponsored' from the callagent.pro attribution
