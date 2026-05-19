@@ -132,7 +132,7 @@ python3 -m gsipper
 
 ```sh
 ./build.sh --deb
-sudo apt install ./dist/gsipper_1.3.2_amd64.deb
+sudo apt install ./dist/gsipper_1.3.3_amd64.deb
 sudo gsipper --install-pjsua2     # compile PJSUA2 bindings (one-time)
 ```
 
@@ -152,3 +152,9 @@ After install, enable the status-bar extension once:
 gnome-extensions enable gsipper@pulpoff.com
 # X11: Alt+F2, type 'r', Enter   |   Wayland: log out and back in
 ```
+
+---
+
+<p align="center">
+  Sponsored by <a href="https://callagent.pro">callagent.pro</a>
+</p>
