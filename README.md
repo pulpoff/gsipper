@@ -55,10 +55,17 @@ PJSIP's PJSUA2 Python bindings.
   server / username / password, transport (UDP / TCP / TLS), STUN, codec
   priority list and a few NAT / keep-alive knobs.
 - Codecs shipped pre-compiled in the .deb: **Opus**, **G.722**,
-  **G.722.1**, **G.711** a-law / µ-law, **G.729** (via bcg729),
-  **GSM Full-Rate**, and **G.726** (16 / 24 / 32 / 40 kbps).
-  Each is selectable and reorderable in Account → Advanced → Codecs.
-  *G.723.1 is listed in the UI but disabled by default — it's
+  **G.722.1**, **G.711** a-law / µ-law, **GSM Full-Rate**, and **G.726**
+  (16 / 24 / 32 / 40 kbps). Each is selectable and reorderable in
+  Account → Advanced → Codecs.
+- **G.729** is bundled into the .so as well but requires the
+  `libbcg729-0` runtime library. The deb lists it as a *Recommends*
+  (auto-installed on a standard `apt install` but not strictly
+  required); without it gsipper still installs, but the PJSUA2
+  bindings will refuse to load. Install `libbcg729-0` or run
+  `sudo gsipper --install-pjsua2` to rebuild pjsua2 without the
+  G.729 dependency.
+- *G.723.1 is listed in the UI but disabled by default — it's
   patent-restricted and not bundled with PJSIP.*
 - Status dot in the window header bar — green online, yellow connecting,
   red offline; clickable for Connect / Disconnect / Reconnect / Exit;
@@ -135,7 +142,7 @@ python3 -m gsipper
 
 ```sh
 ./build.sh --deb
-sudo apt install ./dist/gsipper_1.2.2_amd64.deb
+sudo apt install ./dist/gsipper_1.2.3_amd64.deb
 sudo gsipper --install-pjsua2     # compile PJSUA2 bindings (one-time)
 ```
 

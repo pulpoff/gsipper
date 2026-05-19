@@ -258,6 +258,17 @@ class SipEndpoint:
     def unavailable_codecs(self) -> List[str]:
         return list(self._unavailable_codecs)
 
+    def available_codec_ids(self) -> List[str]:
+        """Codec IDs reported by pjsua2.Endpoint.codecEnum2() — the
+        ones that are ACTUALLY built into the .so and can be enabled.
+        Empty if pjsua2 is not loaded or hasn't been started yet."""
+        if not HAVE_PJSUA2 or self._ep is None:
+            return []
+        try:
+            return [c.codecId for c in self._ep.codecEnum2()]
+        except Exception:
+            return []
+
     def set_reg_handler(self, handler: RegStateHandler) -> None:
         self._reg_handler = handler
 

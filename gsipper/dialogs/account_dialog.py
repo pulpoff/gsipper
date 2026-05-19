@@ -95,6 +95,7 @@ class AccountDialog(Adw.PreferencesWindow):
         parent: Gtk.Window,
         account: AccountSettings,
         on_save: Callable[[AccountSettings], None],
+        available_codec_ids: Optional[List[str]] = None,
     ) -> None:
         super().__init__()
         self.set_title("Account")
@@ -105,6 +106,12 @@ class AccountDialog(Adw.PreferencesWindow):
 
         self._account = account
         self._on_save = on_save
+        # pjsua2's codecEnum2() result — used by the Advanced page to
+        # gray out codec rows the running .so doesn't actually ship
+        # (e.g. G.729 when libbcg729 is missing at runtime). An empty
+        # list means 'pjsua2 isn't loaded yet' so we don't gray
+        # anything out.
+        self._available_codec_ids: List[str] = list(available_codec_ids or [])
 
         page = Adw.PreferencesPage()
 
@@ -135,9 +142,13 @@ class AccountDialog(Adw.PreferencesWindow):
 
     def _open_advanced(self) -> None:
         # Sync current edits into the dataclass first so the advanced
+        # dialog opens against the same picture.
         # dialog sees fresh values for the basic fields.
         self._sync_basic()
-        dlg = AdvancedAccountDialog(self, self._account)
+        dlg = AdvancedAccountDialog(
+            self, self._account,
+            available_codec_ids=self._available_codec_ids,
+        )
         dlg.present()
 
     def _sync_basic(self) -> None:
@@ -165,6 +176,7 @@ class AdvancedAccountDialog(Adw.PreferencesWindow):
         self,
         parent: Gtk.Window,
         account: AccountSettings,
+        available_codec_ids: Optional[List[str]] = None,
     ) -> None:
         super().__init__()
         self.set_title("Advanced")
@@ -174,6 +186,7 @@ class AdvancedAccountDialog(Adw.PreferencesWindow):
         self.set_default_size(560, 820)
 
         self._account = account
+        self._available_codec_ids: List[str] = list(available_codec_ids or [])
         # Work on a copy so unsaved changes don't leak if the user
         # force-closes the parent without coming back through here.
         self._codecs: List[dict] = [dict(c) for c in account.codecs]
@@ -223,9 +236,24 @@ class AdvancedAccountDialog(Adw.PreferencesWindow):
             self._codecs_group.add(row)
             self._codec_rows.append(row)
 
+    def _is_codec_available(self, codec_id_prefix: str) -> bool:
+        """A codec is 'available' when pjsua2.Endpoint.codecEnum2()
+        reports an entry whose id starts with our prefix. Empty list
+        from the endpoint (pjsua2 not loaded yet) is treated as
+        'unknown' — we don't gray rows out in that case."""
+        if not self._available_codec_ids:
+            return True
+        return any(cid.startswith(codec_id_prefix)
+                   for cid in self._available_codec_ids)
+
     def _make_codec_row(self, codec: dict, index: int, total: int) -> Adw.ActionRow:
+        available = self._is_codec_available(codec["id"])
+
         row = Adw.ActionRow(title=codec["name"])
-        row.set_subtitle(codec["id"])
+        if available:
+            row.set_subtitle(codec["id"])
+        else:
+            row.set_subtitle(f"{codec['id']}  ·  not available in this build")
 
         up = Gtk.Button(icon_name="go-up-symbolic", valign=Gtk.Align.CENTER)
         up.add_css_class("flat")
@@ -239,9 +267,22 @@ class AdvancedAccountDialog(Adw.PreferencesWindow):
         down.set_sensitive(index < total - 1)
         down.connect("clicked", lambda *_: self._move(index, 1))
 
-        sw = Gtk.Switch(valign=Gtk.Align.CENTER, active=bool(codec.get("enabled", True)))
-        sw.connect("notify::active",
-                   lambda s, *_: self._set_enabled(index, s.get_active()))
+        sw = Gtk.Switch(valign=Gtk.Align.CENTER,
+                        active=bool(codec.get("enabled", True)))
+        if not available:
+            # User can't toggle a codec the .so doesn't have, and an
+            # 'enabled' bit hanging around from a previous build would
+            # be silently dropped at registration anyway — clear it
+            # here so saved settings.json matches reality.
+            sw.set_active(False)
+            sw.set_sensitive(False)
+            sw.set_tooltip_text(
+                "Not available — rebuild pjsua2 with this codec to enable.")
+            codec["enabled"] = False
+            row.add_css_class("dim-label")
+        else:
+            sw.connect("notify::active",
+                       lambda s, *_: self._set_enabled(index, s.get_active()))
 
         row.add_suffix(up)
         row.add_suffix(down)
