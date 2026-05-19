@@ -1,3 +1,13 @@
+gsipper (1.0.4-1) unstable; urgency=medium
+
+  * Reconnect now does a real reconnect: tears down the pjsua2
+    Account and rebuilds it through configure_account, so a fresh
+    REGISTER actually goes on the wire. The previous
+    setRegistration(True)-only path short-circuited inside PJSIP
+    when the existing registration was still valid.
+
+ -- pulpoff <noreply@pulpoff.com>  Tue, 19 May 2026 00:00:00 +0000
+
 gsipper (1.0.3-1) unstable; urgency=medium
 
   * Status dot becomes a Gtk.MenuButton with a state-dependent menu:
