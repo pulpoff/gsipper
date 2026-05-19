@@ -107,11 +107,22 @@ build_pjsip() {
 
     # On a forced rebuild drop the previously-installed user-site
     # bindings + the pjproject build tree so the new PJ_VERSION,
-    # bcg729 / opus link flags, etc. actually take effect.
+    # opus / SRTP / etc. link flags actually take effect.
     if [ "$force" = "force" ]; then
         echo "==> forcing pjsua2 rebuild: clearing user-site + ~/.cache/gsipper"
-        rm -f "$HOME"/.local/lib/python3*/site-packages/pjsua2.py \
-              "$HOME"/.local/lib/python3*/site-packages/_pjsua2*.so 2>/dev/null || true
+        # PJSIP's setup.py install installs as a versioned .egg
+        # directory and APPENDS to easy-install.pth instead of
+        # replacing — so a later install leaves the old egg on the
+        # import path, and the next 'import pjsua2' silently picks
+        # the old build. Nuke all variants here.
+        for site in "$HOME"/.local/lib/python3*/site-packages; do
+            [ -d "$site" ] || continue
+            rm -f  "$site/pjsua2.py" "$site"/_pjsua2*.so 2>/dev/null || true
+            rm -rf "$site"/pjsua2*.egg "$site"/pjsua2*.egg-info 2>/dev/null || true
+            if [ -f "$site/easy-install.pth" ]; then
+                sed -i '/pjsua2/d' "$site/easy-install.pth"
+            fi
+        done
         rm -rf "$HOME/.cache/gsipper/pjproject-"*
     fi
 
@@ -157,7 +168,25 @@ build_pjsip() {
     CFLAGS="-fPIC -fpermissive ${CFLAGS:-}" \
     CXXFLAGS="-fPIC -fpermissive ${CXXFLAGS:-}" \
     make
-    "$PYTHON" setup.py install --user
+
+    # Install by direct file copy instead of 'setup.py install --user'.
+    # The latter creates a versioned 'pjsua2-<ver>-py<x.y>.egg'
+    # directory and APPENDS to easy-install.pth — re-running the
+    # build (e.g. switching from 2.14.1 to 2.15) leaves the old egg
+    # on the import path, so 'import pjsua2' silently picks the
+    # stale one and our --deb step bundles it. The .so + .py copy
+    # is what 'setup.py install' would have done anyway, minus the
+    # egg machinery.
+    user_site="$("$PYTHON" -c 'import site; print(site.getusersitepackages())')"
+    mkdir -p "$user_site"
+    so_file="$(ls build/lib.linux-*/_pjsua2*.so 2>/dev/null | head -1)"
+    py_file="$(ls build/lib.linux-*/pjsua2.py 2>/dev/null | head -1)"
+    if [ -z "$so_file" ] || [ -z "$py_file" ]; then
+        echo "error: pjsua2 build artefacts missing in build/lib.linux-*" >&2
+        return 1
+    fi
+    install -m 644 "$py_file" "$user_site/pjsua2.py"
+    install -m 644 "$so_file" "$user_site/$(basename "$so_file")"
 
     cd "$SCRIPT_DIR"
 
