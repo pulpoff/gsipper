@@ -23,6 +23,7 @@ except (ValueError, ImportError):
 
 from gi.repository import Gio, Gtk  # noqa: E402
 
+from .. import __version__
 from .. import log as gslog
 from ..dialogs.account_dialog import AccountDialog
 from ..dialogs.log_dialog import LogDialog
@@ -49,11 +50,14 @@ class MainWindow(_BaseWindow):
         self._settings = load_settings()
         self._sip = SipEndpoint.get()
         self._sip.set_reg_handler(self._on_reg_state)
+        self._sip.set_call_state_handler(self._on_call_state)
 
         self._install_actions(app)
         menu_model = self._build_menu_model()
 
         self.dialer = DialerView()
+        self.dialer.connect("call-requested", self._on_dial_requested)
+        self.dialer.connect("hangup-requested", self._on_hangup_requested)
         self.contacts = ContactsView()
         self.calls = CallsView()
         self.messages = MessagesView()
@@ -243,10 +247,54 @@ class MainWindow(_BaseWindow):
 
     def _on_window_close(self, *_args) -> bool:
         try:
+            self._sip.hangup_active()
+        except Exception:
+            pass
+        try:
             self._sip.shutdown()
         except Exception:
             pass
         return False
+
+    # ------------------------------------------------------------------
+    # Outgoing calls
+    # ------------------------------------------------------------------
+
+    def _on_dial_requested(self, _dialer, number: str) -> None:
+        if not self._sip.available:
+            self._toast("SIP backend unavailable")
+            return
+        uri = self._build_dial_uri(number)
+        logger.info("dial: %s -> %s", number, uri)
+        call = self._sip.make_call(uri)
+        if call is None:
+            self._toast("Could not place call (account not registered?)")
+            return
+        self.dialer.show_call(peer=number, state="calling")
+        if _USE_ADW and hasattr(self, "_stack"):
+            self._stack.set_visible_child_name("dialer")
+
+    def _on_hangup_requested(self, *_args) -> None:
+        self._sip.hangup_active()
+
+    def _on_call_state(self, call, state: str) -> None:
+        logger.info("UI call state: %s peer=%s", state,
+                    getattr(call, "peer_display", ""))
+        if state == "ended":
+            self.dialer.show_keypad()
+            return
+        peer = getattr(call, "peer_display", "") or "—"
+        self.dialer.show_call(peer=peer, state=state)
+
+    def _build_dial_uri(self, target: str) -> str:
+        target = target.strip()
+        if target.startswith(("sip:", "sips:", "tel:")):
+            return target
+        a = self._settings.account
+        domain = a.domain or a.server
+        if not domain:
+            return target
+        return f"sip:{target}@{domain}"
 
     def _action_about(self, *_args) -> None:
         if _USE_ADW:
@@ -254,7 +302,7 @@ class MainWindow(_BaseWindow):
                 transient_for=self,
                 application_name="gsipper",
                 application_icon="gsipper",
-                version="0.1.0",
+                version=__version__,
                 developer_name="pulpoff",
                 license_type=Gtk.License.GPL_2_0,
                 website="https://github.com/pulpoff/gsipper",
