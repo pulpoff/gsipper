@@ -57,8 +57,6 @@ PJSIP's PJSUA2 Python bindings.
 - Codecs shipped pre-compiled in the .deb: **Opus**, **G.722**,
   **G.722.1**, **G.711** a-law / µ-law, and **GSM Full-Rate**.
   Each is selectable and reorderable in Account → Advanced → Codecs.
-  G.729 / G.726 / G.723.1 are deliberately not supported (avoids
-  external lib dependencies and patent-encumbered codec sources).
 - Status dot in the window header bar — green online, yellow connecting,
   red offline; clickable for Connect / Disconnect / Reconnect / Exit;
   tooltip carries the SIP reason text.
