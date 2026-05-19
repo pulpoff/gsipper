@@ -1,0 +1,17 @@
+/* GNOME Shell extension stylesheet for gsipper@pulpoff.com. */
+
+.gsipper-status-icon {
+    padding: 0 6px;
+}
+
+.gsipper-status-icon.gsipper-online {
+    color: #2ec27e;   /* GNOME success green */
+}
+
+.gsipper-status-icon.gsipper-connecting {
+    color: #e5a50a;   /* GNOME warning yellow */
+}
+
+.gsipper-status-icon.gsipper-offline {
+    color: #c01c28;   /* GNOME error red */
+}

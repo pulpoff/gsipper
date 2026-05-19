@@ -58,6 +58,9 @@ class MainWindow(_BaseWindow):
         self._ringer = Ringer()
         self._ringin_window: RinginWindow | None = None
         self._incoming_notification_id = "gsipper-incoming"
+        # Count of missed calls since the user last visited the Calls tab.
+        # Reset by _on_view_switched / the Calls action.
+        self._missed_calls: int = 0
 
         self._install_actions(app)
         menu_model = self._build_menu_model()
@@ -112,6 +115,7 @@ class MainWindow(_BaseWindow):
         stack.add_titled_with_icon(self.calls, "calls", "Calls", "call-start-symbolic")
         stack.add_titled_with_icon(self.messages, "messages", "Messages", "mail-unread-symbolic")
         self._stack = stack
+        stack.connect("notify::visible-child-name", self._on_view_switched)
 
         header.set_title_widget(Adw.WindowTitle(title="", subtitle=""))
 
@@ -226,16 +230,20 @@ class MainWindow(_BaseWindow):
                 tip += "\n" + codec_tip
             self._set_status("online", tooltip=tip)
             self._tray.set_state("online")
+            self._publish_dbus_status("online")
         elif code >= 400:
             self._set_status("offline", tooltip=f"Error {code}: {reason}")
             self._tray.set_state("offline")
+            self._publish_dbus_status("offline")
         elif not self._settings.account.enabled:
             self._set_status("offline", tooltip="Account disabled")
             self._tray.set_state("offline")
+            self._publish_dbus_status("offline")
         else:
             self._set_status("connecting",
                              tooltip=f"Registering… {reason}" if reason else "Registering…")
             self._tray.set_state("connecting")
+            self._publish_dbus_status("connecting")
 
     def _codec_tooltip(self) -> str:
         enabled = self._sip.enabled_codecs
@@ -300,6 +308,7 @@ class MainWindow(_BaseWindow):
 
         if state == "incoming":
             self._open_ringin(call)
+            self._emit_dbus_incoming(getattr(call, "peer_display", ""))
             return
 
         if state == "ended":
@@ -308,6 +317,12 @@ class MainWindow(_BaseWindow):
             self._withdraw_incoming_notification()
             self.dialer.show_keypad()
             self.calls.refresh()
+            # If this was an unanswered incoming, bump the missed badge.
+            if (getattr(call, "incoming", False)
+                    and getattr(call, "connected_at", None) is None
+                    and int(getattr(call, "last_status_code", 0)) not in (486, 603)):
+                self._missed_calls += 1
+                self._publish_dbus_missed()
             return
 
         # calling / ringing / connected
@@ -380,6 +395,39 @@ class MainWindow(_BaseWindow):
             app.withdraw_notification(self._incoming_notification_id)
         except Exception:
             pass
+
+    # ------------------------------------------------------------------
+    # D-Bus status service (consumed by gsipper@pulpoff.com extension)
+    # ------------------------------------------------------------------
+
+    def _dbus_service(self):
+        app = self.get_application()
+        if app is None:
+            return None
+        return getattr(app, "status_service", None)
+
+    def _publish_dbus_status(self, status: str) -> None:
+        svc = self._dbus_service()
+        if svc is not None:
+            svc.set_status(status)
+
+    def _publish_dbus_missed(self) -> None:
+        svc = self._dbus_service()
+        if svc is not None:
+            svc.set_missed_calls(self._missed_calls)
+
+    def _emit_dbus_incoming(self, peer: str) -> None:
+        svc = self._dbus_service()
+        if svc is not None:
+            svc.emit_incoming_call(peer or "")
+
+    def _on_view_switched(self, *_args) -> None:
+        # Clear the missed badge when the user opens the Calls tab.
+        if not _USE_ADW or not hasattr(self, "_stack"):
+            return
+        if self._stack.get_visible_child_name() == "calls" and self._missed_calls:
+            self._missed_calls = 0
+            self._publish_dbus_missed()
 
     def _build_dial_uri(self, target: str) -> str:
         target = target.strip()
