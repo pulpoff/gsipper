@@ -1,3 +1,14 @@
+gsipper (1.0.8-1) unstable; urgency=medium
+
+  * Recording now waits for the call to be ANSWERED. Calls cancelled
+    while ringing (487 Request Terminated) no longer leave a WAV +
+    MP3 in ~/.local/share/gsipper/recordings. _maybe_start_recording
+    is gated on STATE_CONNECTED; audio media that comes up during
+    early media (183 Session Progress with SDP) is cached and the
+    recorder is only created once onCallState reaches CONFIRMED.
+
+ -- pulpoff <noreply@pulpoff.com>  Tue, 19 May 2026 00:00:00 +0000
+
 gsipper (1.0.7-1) unstable; urgency=medium
 
   * Fix pjlib assertion ('Calling pjlib from unknown/external thread')
