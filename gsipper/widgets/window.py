@@ -56,6 +56,11 @@ class MainWindow(_BaseWindow):
         # SIP endpoint is created lazily in _init_sip via GLib.idle_add
         # so the window paints before the pjsua2 module loads.
         self._sip = None  # type: ignore[assignment]
+        # Latched when the user picks Disconnect from the status menu
+        # so the subsequent active=False onRegState (carrying the
+        # trunk's 200 OK to our un-REGISTER) doesn't flap the dot back
+        # to yellow / "Registering…".
+        self._user_disconnected = False
         self._tray = TrayIndicator()
         self._ringer = Ringer()
         self._ringin_window: RinginWindow | None = None
@@ -311,6 +316,8 @@ class MainWindow(_BaseWindow):
     def _on_reg_state(self, active: bool, code: int, reason: str) -> None:
         logger.info("status: active=%s code=%s reason=%s", active, code, reason)
         if active:
+            # Any successful REGISTER clears the user-disconnect latch.
+            self._user_disconnected = False
             tip = "Online"
             codec_tip = self._codec_tooltip()
             if codec_tip:
@@ -318,6 +325,12 @@ class MainWindow(_BaseWindow):
             self._set_status("online", tooltip=tip)
             self._tray.set_state("online")
             self._publish_dbus_status("online")
+        elif self._user_disconnected:
+            # User clicked Disconnect; don't flap back to yellow when
+            # the trunk's 200 OK to our un-REGISTER arrives.
+            self._set_status("offline", tooltip="Disconnected")
+            self._tray.set_state("offline")
+            self._publish_dbus_status("offline")
         elif code >= 400:
             self._set_status("offline", tooltip=f"Error {code}: {reason}")
             self._tray.set_state("offline")
@@ -378,11 +391,19 @@ class MainWindow(_BaseWindow):
     def _action_connect(self, *_args) -> None:
         if self._sip is None:
             return
+        self._user_disconnected = False
+        self._set_status("connecting", tooltip="Connecting…")
         self._sip.set_registration(True)
 
     def _action_disconnect(self, *_args) -> None:
         if self._sip is None:
             return
+        # Latch + paint red immediately so the dot doesn't flap to
+        # yellow when the trunk's 200 OK to our un-REGISTER arrives.
+        self._user_disconnected = True
+        self._set_status("offline", tooltip="Disconnected")
+        self._tray.set_state("offline")
+        self._publish_dbus_status("offline")
         self._sip.set_registration(False)
 
     def _action_reconnect(self, *_args) -> None:
@@ -396,6 +417,7 @@ class MainWindow(_BaseWindow):
         # Account and registers fresh.
         if self._sip is None:
             return
+        self._user_disconnected = False
         self._set_status("connecting", tooltip="Reconnecting…")
         self._sip.configure_account(self._settings.account)
 
