@@ -112,7 +112,16 @@ class MainWindow(_BaseWindow):
         self._status_dot.set_size_request(12, 12)
         self._status_dot.add_css_class("status-dot")
         self._status_dot.add_css_class("offline")
-        header.pack_start(self._status_dot)
+        # The dot is the child of a flat MenuButton so clicking it
+        # opens a state-dependent menu (Disconnect/Reconnect/Exit when
+        # online, Connect/Exit when offline). _update_status_menu
+        # rebuilds the model on every state transition.
+        self._status_btn = Gtk.MenuButton()
+        self._status_btn.set_child(self._status_dot)
+        self._status_btn.add_css_class("flat")
+        self._status_btn.set_tooltip_text("Offline")
+        self._update_status_menu("offline")
+        header.pack_start(self._status_btn)
 
         stack = Adw.ViewStack()
         stack.add_titled_with_icon(self.dialer, "dialer", "Dialer", "input-dialpad-symbolic")
@@ -149,12 +158,15 @@ class MainWindow(_BaseWindow):
 
     def _install_actions(self, app) -> None:
         for name, handler in {
-            "account": self._action_account,
-            "settings": self._action_settings,
-            "log": self._action_log,
-            "about": self._action_about,
-            "quit": self._action_quit,
-            "close": self._action_close,
+            "account":    self._action_account,
+            "settings":   self._action_settings,
+            "log":        self._action_log,
+            "about":      self._action_about,
+            "quit":       self._action_quit,
+            "close":      self._action_close,
+            "connect":    self._action_connect,
+            "disconnect": self._action_disconnect,
+            "reconnect":  self._action_reconnect,
         }.items():
             action = Gio.SimpleAction.new(name, None)
             action.connect("activate", handler)
@@ -277,7 +289,40 @@ class MainWindow(_BaseWindow):
         for c in ("online", "connecting", "offline"):
             dot.remove_css_class(c)
         dot.add_css_class(state)
-        dot.set_tooltip_text(tooltip or state.capitalize())
+        tip = tooltip or state.capitalize()
+        dot.set_tooltip_text(tip)
+        if hasattr(self, "_status_btn"):
+            self._status_btn.set_tooltip_text(tip)
+            self._update_status_menu(state)
+
+    def _update_status_menu(self, state: str) -> None:
+        """Rebuild the dropdown menu shown on the headerbar dot."""
+        menu = Gio.Menu()
+        if state == "online":
+            menu.append("Disconnect", "win.disconnect")
+            menu.append("Reconnect", "win.reconnect")
+        else:
+            # 'connecting' and 'offline' both expose Connect — useful
+            # if the user wants to force a fresh REGISTER instead of
+            # waiting out a retry backoff.
+            menu.append("Connect", "win.connect")
+        menu.append("Exit", "win.quit")
+        if hasattr(self, "_status_btn"):
+            self._status_btn.set_menu_model(menu)
+
+    # ------------------------------------------------------------------
+    # Status-menu actions
+    # ------------------------------------------------------------------
+
+    def _action_connect(self, *_args) -> None:
+        self._sip.set_registration(True)
+
+    def _action_disconnect(self, *_args) -> None:
+        self._sip.set_registration(False)
+
+    def _action_reconnect(self, *_args) -> None:
+        self._sip.set_registration(False)
+        self._sip.set_registration(True)
 
     def _on_window_close(self, *_args) -> bool:
         """X button: hide to tray. SIP keeps running so we still ring on
