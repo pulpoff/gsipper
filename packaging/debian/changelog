@@ -1,3 +1,15 @@
+gsipper (1.1.0-1) unstable; urgency=medium
+
+  * Settings dialog (start minimized / run on start / record calls).
+  * Call recording: WAV via PJSUA2, MP3 conversion via ffmpeg,
+    in-app playback dialog with timeline and transport buttons.
+  * Window X button hides to tray; SIP stays registered. Real quit
+    via win.quit / Ctrl+Q / tray-extension Quit.
+  * Bundle pjsua2 (built locally with pjproject 2.15) into the deb.
+  * Extension metadata: shell-version 45..49 + numeric version=1.
+
+ -- pulpoff <noreply@pulpoff.com>  Tue, 19 May 2026 00:00:00 +0000
+
 gsipper (1.0.1-1) unstable; urgency=medium
 
   * Initial Debian package.
