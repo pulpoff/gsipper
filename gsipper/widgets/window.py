@@ -21,6 +21,9 @@ except (ValueError, ImportError):
 
 from gi.repository import Gio, Gtk  # noqa: E402
 
+from ..dialogs.account_dialog import AccountDialog
+from ..sip.endpoint import SipEndpoint
+from ..storage.settings import load_settings, save_settings
 from .dialer_view import DialerView
 from .contacts_view import ContactsView
 from .calls_view import CallsView
@@ -35,6 +38,10 @@ class MainWindow(_BaseWindow):
         super().__init__(application=app, title="gsipper")
         self.set_default_size(360, 560)
         self.set_icon_name("gsipper")
+
+        self._settings = load_settings()
+        self._sip = SipEndpoint.get()
+        self._sip.set_reg_handler(self._on_reg_state)
 
         self._install_actions(app)
         menu_model = self._build_menu_model()
@@ -53,6 +60,11 @@ class MainWindow(_BaseWindow):
         app.set_accels_for_action("win.close", ["<Control>w"])
         app.set_accels_for_action("win.account", ["<Control>comma"])
         app.set_accels_for_action("win.settings", ["<Control>p"])
+
+        self.connect("close-request", self._on_window_close)
+
+        # Kick off registration with whatever's already on disk.
+        self._apply_account_settings()
 
     def _build_adw_layout(self, menu_model: Gio.MenuModel) -> None:
         header = Adw.HeaderBar()
@@ -124,12 +136,79 @@ class MainWindow(_BaseWindow):
         return menu
 
     def _action_account(self, *_args) -> None:
-        # TODO step 2: Account dialog
-        self._toast("Account configuration: coming in step 2")
+        if not _USE_ADW:
+            self._toast("Account dialog requires libadwaita")
+            return
+        dialog = AccountDialog(
+            parent=self,
+            account=self._settings.account,
+            on_save=self._on_account_saved,
+        )
+        dialog.present()
 
     def _action_settings(self, *_args) -> None:
-        # TODO step 8: Adw.PreferencesWindow
+        # TODO step 8: Adw.PreferencesWindow with audio / codecs / network
         self._toast("Settings: coming in step 8")
+
+    def _on_account_saved(self, _account) -> None:
+        save_settings(self._settings)
+        self._apply_account_settings()
+
+    def _apply_account_settings(self) -> None:
+        if not self._sip.available:
+            self._set_status("No SIP backend", "error",
+                             tooltip="python3-pjsua2 is not installed")
+            return
+        if not self._settings.account.enabled:
+            self._set_status("Offline", None)
+            try:
+                self._sip.configure_account(self._settings.account)
+            except Exception:
+                pass
+            return
+        self._set_status("Connecting…", "warning")
+        try:
+            self._sip.configure_account(self._settings.account)
+        except Exception as exc:
+            self._set_status("Error", "error", tooltip=str(exc))
+
+    def _on_reg_state(self, active: bool, code: int, reason: str) -> None:
+        if active:
+            tip = self._codec_tooltip()
+            self._set_status("Online", "success", tooltip=tip)
+        elif code >= 400:
+            self._set_status(f"Error {code}", "error", tooltip=reason)
+        elif not self._settings.account.enabled:
+            self._set_status("Offline", None)
+        else:
+            self._set_status("Connecting…", "warning", tooltip=reason or None)
+
+    def _codec_tooltip(self) -> str:
+        enabled = self._sip.enabled_codecs
+        unavail = self._sip.unavailable_codecs
+        parts = []
+        if enabled:
+            parts.append("Enabled codecs: " + ", ".join(enabled))
+        if unavail:
+            parts.append("Unavailable: " + ", ".join(unavail))
+        return "\n".join(parts) if parts else ""
+
+    def _set_status(self, text: str, css: str | None, tooltip: str | None = None) -> None:
+        if not hasattr(self, "_status_label"):
+            return
+        label = self._status_label
+        label.set_text(text)
+        for c in ("success", "warning", "error", "dim-label"):
+            label.remove_css_class(c)
+        label.add_css_class(css if css else "dim-label")
+        label.set_tooltip_text(tooltip or "")
+
+    def _on_window_close(self, *_args) -> bool:
+        try:
+            self._sip.shutdown()
+        except Exception:
+            pass
+        return False
 
     def _action_about(self, *_args) -> None:
         if _USE_ADW:
