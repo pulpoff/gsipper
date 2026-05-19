@@ -1,3 +1,17 @@
+gsipper (1.2.5-1) unstable; urgency=medium
+
+  * './build.sh --pjsua2' now FORCES a rebuild. Previously it
+    short-circuited when 'import pjsua2' already worked, so a
+    user upgrading from an older pjsua2 build (e.g. 2.14.1 with
+    only G.722 compiled in) couldn't pick up the newer pjproject
+    + bcg729 / opus link flags that ship in 1.2.x. The forced
+    path also clears ~/.local/lib/python3*/site-packages/pjsua2*
+    and the ~/.cache/gsipper/pjproject-* build tree so the
+    rebuild is genuinely fresh. The implicit path (just running
+    './build.sh') still only builds when nothing is there yet.
+
+ -- pulpoff <noreply@pulpoff.com>  Tue, 19 May 2026 00:00:00 +0000
+
 gsipper (1.2.4-1) unstable; urgency=medium
 
   * Fix pjlib SIGABRT when opening Account > Advanced. 1.2.3 added
