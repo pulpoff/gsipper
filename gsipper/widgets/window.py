@@ -21,13 +21,15 @@ try:
 except (ValueError, ImportError):
     pass
 
-from gi.repository import Gio, Gtk  # noqa: E402
+from gi.repository import GLib, Gio, Gtk  # noqa: E402
 
 from .. import __version__
 from .. import log as gslog
 from ..dialogs.account_dialog import AccountDialog
 from ..dialogs.log_dialog import LogDialog
-from ..sip.endpoint import PJSUA2_IMPORT_ERROR, SipEndpoint
+# SipEndpoint and PJSUA2_IMPORT_ERROR are imported lazily inside
+# _init_sip so the 40 MB pjsua2 shared library doesn't load until
+# the first idle slot after the window is painted.
 from ..sound import Ringer
 from ..storage.settings import load_settings, save_settings
 from ..tray import TrayIndicator
@@ -51,11 +53,9 @@ class MainWindow(_BaseWindow):
         self.set_icon_name("gsipper")
 
         self._settings = load_settings()
-        self._sip = SipEndpoint.get()
-        self._sip.set_reg_handler(self._on_reg_state)
-        self._sip.set_call_state_handler(self._on_call_state)
-        self._sip.set_message_handler(self._on_sip_message)
-        self._sip.set_message_status_handler(self._on_sip_message_status)
+        # SIP endpoint is created lazily in _init_sip via GLib.idle_add
+        # so the window paints before the pjsua2 module loads.
+        self._sip = None  # type: ignore[assignment]
         self._tray = TrayIndicator()
         self._ringer = Ringer()
         self._ringin_window: RinginWindow | None = None
@@ -89,8 +89,22 @@ class MainWindow(_BaseWindow):
 
         self.connect("close-request", self._on_window_close)
 
-        # Kick off registration with whatever's already on disk.
-        self._apply_account_settings()
+        # Surface the 'connecting' state immediately so the headerbar
+        # dot, the tray indicator and the shell-extension D-Bus
+        # property reflect the right colour from frame 1 — before SIP
+        # has done any work. Yellow if we have something to register
+        # with, red otherwise.
+        acct = self._settings.account
+        if acct.enabled and acct.server and acct.username:
+            self._set_status("connecting", tooltip="Registering…")
+        else:
+            self._set_status("offline", tooltip="Not configured")
+
+        # Defer pjsua2 import + SIP setup to the next idle slot. That
+        # lets GTK paint the window, the tray icon and the extension
+        # before the 40 MB pjsua2 .so loads and before libCreate /
+        # libInit / transportCreate / REGISTER fire on the worker.
+        GLib.idle_add(self._init_sip)
 
     def _build_adw_layout(self, menu_model: Gio.MenuModel) -> None:
         header = Adw.HeaderBar()
@@ -222,8 +236,27 @@ class MainWindow(_BaseWindow):
         save_settings(self._settings)
         self._apply_account_settings()
 
+    def _init_sip(self) -> bool:
+        """Idle-time hook: import pjsua2, create the SipEndpoint, wire
+        callbacks, then kick off the first registration. Runs exactly
+        once; further changes go through _apply_account_settings."""
+        from ..sip.endpoint import SipEndpoint
+        self._sip = SipEndpoint.get()
+        self._sip.set_reg_handler(self._on_reg_state)
+        self._sip.set_call_state_handler(self._on_call_state)
+        self._sip.set_message_handler(self._on_sip_message)
+        self._sip.set_message_status_handler(self._on_sip_message_status)
+        self._apply_account_settings()
+        return False  # one-shot
+
     def _apply_account_settings(self) -> None:
+        if self._sip is None:
+            # Called before _init_sip (e.g. by an account-saved hook).
+            # Schedule it to run after SIP comes up.
+            GLib.idle_add(self._apply_account_settings)
+            return
         if not self._sip.available:
+            from ..sip.endpoint import PJSUA2_IMPORT_ERROR
             tip = (
                 "python3-pjsua2 could not be imported. "
                 "Open the Log… menu for the full traceback."
@@ -315,13 +348,23 @@ class MainWindow(_BaseWindow):
     # ------------------------------------------------------------------
 
     def _action_connect(self, *_args) -> None:
+        if self._sip is None:
+            return
         self._sip.set_registration(True)
 
     def _action_disconnect(self, *_args) -> None:
+        if self._sip is None:
+            return
         self._sip.set_registration(False)
 
     def _action_reconnect(self, *_args) -> None:
-        self._sip.set_registration(False)
+        # Plain refresh — calling setRegistration(True) on an already-
+        # registered account sends a fresh REGISTER. We used to do
+        # set_registration(False) then (True), but PJSIP raises
+        # pjsua2.Error if a (True) follows a (False) before the
+        # un-REGISTER transaction has settled.
+        if self._sip is None:
+            return
         self._sip.set_registration(True)
 
     def _on_window_close(self, *_args) -> bool:
@@ -336,7 +379,7 @@ class MainWindow(_BaseWindow):
     # ------------------------------------------------------------------
 
     def _on_dial_requested(self, _dialer, number: str) -> None:
-        if not self._sip.available:
+        if self._sip is None or not self._sip.available:
             self._toast("SIP backend unavailable")
             return
         uri = self._build_dial_uri(number)
@@ -350,6 +393,8 @@ class MainWindow(_BaseWindow):
             self._stack.set_visible_child_name("dialer")
 
     def _on_hangup_requested(self, *_args) -> None:
+        if self._sip is None:
+            return
         self._sip.hangup_active()
 
     def _dialer_friendly(self, target: str) -> str:
@@ -393,9 +438,10 @@ class MainWindow(_BaseWindow):
         self.messages.on_message_status(message_id, code, reason)
 
     def _on_messages_send(self, _view, peer_uri: str, body: str, message_id: str) -> None:
-        if not self._sip.send_message(peer_uri, body, message_id=message_id):
-            # pjsua2 entirely unavailable (not even queued); send_message
-            # returns False only in that case now. Mark immediately.
+        if self._sip is None or \
+                not self._sip.send_message(peer_uri, body, message_id=message_id):
+            # pjsua2 entirely unavailable (not even queued). Mark
+            # the outgoing bubble as failed immediately.
             self.messages.on_message_status(message_id, 500, "SIP unavailable")
 
     def _on_messages_call(self, _view, peer_uri: str) -> None:
@@ -489,9 +535,13 @@ class MainWindow(_BaseWindow):
             pass
 
     def _on_ringin_answer(self, *_args) -> None:
+        if self._sip is None:
+            return
         self._sip.answer_active()
 
     def _on_ringin_decline(self, *_args) -> None:
+        if self._sip is None:
+            return
         # 486 Busy Here = explicit decline.
         self._sip.hangup_active(486)
 
