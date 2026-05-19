@@ -73,13 +73,16 @@ apt_install() {
         return
     fi
     echo "Installing: ${missing[*]}"
-    if [ "$(id -u)" -eq 0 ]; then
-        apt-get update
-        apt-get install -y "${missing[@]}"
-    else
-        sudo apt-get update
-        sudo apt-get install -y "${missing[@]}"
+    # apt-get update is allowed to fail (broken third-party repos
+    # shouldn't block us); apt-get install will still succeed if the
+    # cached lists already cover the package.
+    local sudo_cmd=""
+    if [ "$(id -u)" -ne 0 ]; then
+        sudo_cmd="sudo"
     fi
+    $sudo_cmd apt-get update || \
+        echo "warning: apt-get update reported errors; continuing with cached lists" >&2
+    $sudo_cmd apt-get install -y "${missing[@]}"
 }
 
 build_pjsip() {
