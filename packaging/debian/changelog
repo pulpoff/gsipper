@@ -1,3 +1,27 @@
+gsipper (1.2.3-1) unstable; urgency=medium
+
+  * libbcg729-0 is now a Recommends, not a Depends — gsipper no
+    longer refuses to install on machines that don't have it. With
+    libbcg729-0 installed (the default on apt install), G.729 works
+    as before. Without it, the bundled pjsua2 module fails to load
+    and the existing PJSUA2_IMPORT_ERROR / 'offline' tooltip kicks
+    in (gsipper still starts, just can't place calls until either
+    libbcg729-0 is installed or pjsua2 is rebuilt without bcg729).
+  * postinst now grep's the pjsua2 import error and gives a
+    targeted hint: 'sudo apt install libbcg729-0' if that's what's
+    missing, vs. the generic 'sudo gsipper --install-pjsua2' for
+    anything else.
+  * G.729 is OFF by default in the codec list. Account > Advanced >
+    Codecs now grays out any codec that pjsua2's codecEnum2() does
+    not report as available — its switch is set inactive, the row
+    has a 'not available in this build' subtitle and a dim-label
+    style, and the saved-settings 'enabled' bit is cleared so it
+    doesn't leak back later. When the .so does support G.729 (the
+    standard case with libbcg729-0 installed) the row behaves
+    exactly as before — the user just toggles it on.
+
+ -- pulpoff <noreply@pulpoff.com>  Tue, 19 May 2026 00:00:00 +0000
+
 gsipper (1.2.2-1) unstable; urgency=medium
 
   * Migrate existing settings.json on load: codecs added in newer

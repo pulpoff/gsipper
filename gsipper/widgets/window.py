@@ -226,10 +226,16 @@ class MainWindow(_BaseWindow):
         if not _USE_ADW:
             self._toast("Account dialog requires libadwaita")
             return
+        # Hand the dialog pjsua2's list of actually-built codec ids so
+        # the Advanced > Codecs page can gray out entries the running
+        # .so doesn't support (e.g. G.729 when libbcg729 is missing).
+        available = (self._sip.available_codec_ids()
+                     if self._sip is not None else [])
         dialog = AccountDialog(
             parent=self,
             account=self._settings.account,
             on_save=self._on_account_saved,
+            available_codec_ids=available,
         )
         dialog.present()
 

@@ -20,22 +20,47 @@ configure)
     fi
 
     # The deb may bundle pjsua2 under /usr/lib/gsipper; let the same
-    # check that gsipper itself uses at runtime decide.
-    if ! python3 -c "
+    # check that gsipper itself uses at runtime decide. Capture the
+    # error message so we can distinguish 'no pjsua2 at all' from
+    # 'pjsua2 there but a runtime lib is missing' (most often
+    # libbcg729 for G.729, which is now a Recommends rather than a
+    # Depends so apt won't refuse to install gsipper if it's absent).
+    pjsua2_error="$(python3 -c "
 import sys
 sys.path.insert(0, '/usr/lib/gsipper')
 import pjsua2  # noqa
-" >/dev/null 2>&1; then
-        cat <<EOF
+" 2>&1 >/dev/null || true)"
 
-  NOTE: the PJSUA2 Python bindings are not importable.
-  gsipper will start but cannot place calls until you build them:
+    if [ -n "$pjsua2_error" ]; then
+        case "$pjsua2_error" in
+        *libbcg729*)
+            cat <<EOF
+
+  NOTE: the PJSUA2 Python bindings need libbcg729 for G.729 support
+  and it is not installed. Either install it:
+
+      sudo apt install libbcg729-0
+
+  or rebuild gsipper's pjsua2 without the G.729 codec:
+
+      sudo gsipper --install-pjsua2
+
+EOF
+            ;;
+        *)
+            cat <<EOF
+
+  NOTE: the PJSUA2 Python bindings are not importable
+  ($pjsua2_error). gsipper will start but cannot place
+  calls until you build them:
 
       sudo gsipper --install-pjsua2
 
   (one-time, ~5 min, ~150 MB cache under ~/.cache/gsipper).
 
 EOF
+            ;;
+        esac
     fi
 
     cat <<EOF

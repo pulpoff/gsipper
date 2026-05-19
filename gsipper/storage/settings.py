@@ -24,7 +24,11 @@ def default_codecs() -> List[dict]:
         {"id": "G7221/16000",  "name": "G.722.1",             "enabled": True},
         {"id": "PCMA/8000",    "name": "G.711 a-law (PCMA)",  "enabled": True},
         {"id": "PCMU/8000",    "name": "G.711 µ-law (PCMU)",  "enabled": True},
-        {"id": "G729/8000",    "name": "G.729 (bcg729)",      "enabled": True},
+        # G.729 needs libbcg729 at runtime. The deb makes that
+        # library a Recommends, not a Depends, so the codec is off
+        # by default; the Account dialog grays it out if pjsua2's
+        # codec list doesn't include it.
+        {"id": "G729/8000",    "name": "G.729 (bcg729)",      "enabled": False},
         {"id": "GSM/8000",     "name": "GSM Full-Rate",       "enabled": True},
         {"id": "G726-32/8000", "name": "G.726-32",            "enabled": True},
         {"id": "G726-24/8000", "name": "G.726-24",            "enabled": True},
