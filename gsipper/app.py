@@ -108,6 +108,20 @@ class GsipperApp(_BaseApp):
     def do_activate(self) -> None:
         self._ensure_window().present()
 
+    def do_shutdown(self) -> None:
+        """Run on real app quit (win.quit / Ctrl+Q / D-Bus Quit). The
+        window's X button is intercepted to hide-to-tray, so we get
+        here only when the user actually meant to exit."""
+        try:
+            from .sip.endpoint import SipEndpoint
+            sip = SipEndpoint.get()
+            sip.hangup_active()
+            sip.shutdown()
+        except Exception:
+            import logging
+            logging.getLogger(__name__).exception("SIP shutdown raised")
+        _BaseApp.do_shutdown(self)
+
     def _on_command_line(self, app, cmdline) -> int:
         args = cmdline.get_arguments()
         tel_uri: str | None = None
