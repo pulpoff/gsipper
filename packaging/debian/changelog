@@ -1,3 +1,20 @@
+gsipper (1.0.7-1) unstable; urgency=medium
+
+  * Fix pjlib assertion ('Calling pjlib from unknown/external thread')
+    crashing the app right after a recorded call ended. The
+    AudioMediaRecorder ref was being dropped on the GTK main thread,
+    so the SWIG-generated destructor invoked pjmedia cleanup off the
+    pjsua2 worker. Both the call and recorder refs are now packaged
+    into a no-op closure submitted to the worker after the 5-second
+    grace period, so SWIG destructors run on a pjsua2-registered
+    thread.
+  * Fix AttributeError 'AudioMediaRecorder object has no attribute
+    "delete"' — that method only exists on pj.Account. The recorder
+    closes through Python refcount-driven destruction; the dedicated
+    stop_recording() + take_recorder() now reflect that.
+
+ -- pulpoff <noreply@pulpoff.com>  Tue, 19 May 2026 00:00:00 +0000
+
 gsipper (1.0.6-1) unstable; urgency=medium
 
   * Disconnect now paints the headerbar dot red immediately. The
