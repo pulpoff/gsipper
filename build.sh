@@ -27,6 +27,9 @@ APT_PACKAGES=(
     python3-gi-cairo
     gir1.2-gtk-4.0
     gir1.2-adw-1
+    gir1.2-gsound-1.0                      # ringtone playback
+    gir1.2-ayatanaappindicator3-0.1        # tray status icon (optional)
+    sound-theme-freedesktop                # provides phone-incoming-call
 )
 
 # Build deps for compiling pjproject + Python bindings from source

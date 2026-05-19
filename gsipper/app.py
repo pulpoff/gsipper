@@ -47,6 +47,18 @@ class GsipperApp(_BaseApp):
     def do_startup(self) -> None:
         _BaseApp.do_startup(self)
 
+        # Application-scoped actions wired to incoming-call notification
+        # buttons. They must live on the GApplication (not the window)
+        # for Gio.Notification's button activations to find them.
+        for name, handler in {
+            "answer-incoming":  self._on_answer_incoming,
+            "decline-incoming": self._on_decline_incoming,
+            "show-main":        self._on_show_main,
+        }.items():
+            action = Gio.SimpleAction.new(name, None)
+            action.connect("activate", handler)
+            self.add_action(action)
+
         icon_path = os.path.join(_RESOURCE_DIR, "gsipper.svg")
         if os.path.exists(icon_path):
             display = Gdk.Display.get_default()
@@ -87,6 +99,23 @@ class GsipperApp(_BaseApp):
         if self._window is None:
             self._window = MainWindow(self)
         return self._window
+
+    # ------------------------------------------------------------------
+    # GAction handlers invoked from Gio.Notification buttons
+    # ------------------------------------------------------------------
+
+    def _on_answer_incoming(self, _action, _param) -> None:
+        from .sip.endpoint import SipEndpoint
+        SipEndpoint.get().answer_active()
+        self._on_show_main(None, None)
+
+    def _on_decline_incoming(self, _action, _param) -> None:
+        from .sip.endpoint import SipEndpoint
+        SipEndpoint.get().hangup_active(486)
+
+    def _on_show_main(self, _action, _param) -> None:
+        win = self._ensure_window()
+        win.present()
 
 
 def main(argv: List[str] | None = None) -> int:

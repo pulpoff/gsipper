@@ -1,5 +1,9 @@
 """Single active SIP call wrapper.
 
+Carries enough state (started_at / connected_at / direction / final
+status) for the endpoint to write a history record when the call
+disconnects.
+
 pjsua2.Call subclass that surfaces state transitions and connects audio
 media to the system audio devices when the call goes confirmed.
 All callbacks marshal back to the GTK main loop via GLib.idle_add.
@@ -15,6 +19,7 @@ State strings (used across the codebase):
 from __future__ import annotations
 
 import logging
+import time
 from typing import Callable, Optional
 
 from gi.repository import GLib
@@ -76,6 +81,10 @@ if HAVE_PJSUA2:
             self.state = STATE_INCOMING if incoming else STATE_CALLING
             self.last_status_code = 0
             self.last_status_text = ""
+            # For history bookkeeping.
+            self.started_at: float = time.time()
+            self.connected_at: Optional[float] = None
+            self.ended_at: Optional[float] = None
 
         # --------------------------------------------------------------
         # pjsua2 callbacks
@@ -96,6 +105,10 @@ if HAVE_PJSUA2:
 
             mapped = self._map_state(pj_state)
             self.state = mapped
+            if mapped == STATE_CONNECTED and self.connected_at is None:
+                self.connected_at = time.time()
+            if mapped == STATE_ENDED and self.ended_at is None:
+                self.ended_at = time.time()
             logger.info("call state: %s peer=%s code=%s reason=%s",
                         mapped, self.peer_display,
                         self.last_status_code, self.last_status_text)
