@@ -51,7 +51,6 @@ PJ_BUILD_DEPS=(
     libssl-dev
     libopus-dev                            # Opus codec
     libsrtp2-dev
-    libbcg729-dev                          # G.729 (open-source impl)
     uuid-dev
 )
 
@@ -140,8 +139,12 @@ build_pjsip() {
     if [ ! -f .gsipper-built ]; then
         # Static build keeps the resulting _pjsua2.so self-contained,
         # so we don't have to install pjproject system libs.
+        # --disable-bcg729 keeps libbcg729 out of the .so's
+        # DT_NEEDED list so we don't pick up libbcg729 as a runtime
+        # dependency. G.729 is deliberately not supported.
         CFLAGS="-fPIC -O2 -DPJ_AUTOCONF=1" ./configure \
-            --disable-video --disable-libwebrtc --disable-ffmpeg
+            --disable-video --disable-libwebrtc --disable-ffmpeg \
+            --disable-bcg729
         make dep
         make
         touch .gsipper-built

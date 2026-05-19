@@ -22,8 +22,7 @@ Depends: python3 (>= 3.10),
          libsrtp2-1,
          libgsm1
 Recommends: gir1.2-ayatanaappindicator3-0.1,
-            gnome-shell-extension-prefs,
-            libbcg729-0
+            gnome-shell-extension-prefs
 Suggests: python3-pjsua2
 Description: Modern GNOME SIP client
  gsipper is a Python / GTK4 / libadwaita SIP softphone for the
@@ -38,4 +37,4 @@ Description: Modern GNOME SIP client
  target system, run:
    sudo gsipper --install-pjsua2
  to rebuild them locally (~5 min, ~150 MB cache under
- ~/.cache/gsipper/pjproject-2.14.1).
+ ~/.cache/gsipper/pjproject-2.15).

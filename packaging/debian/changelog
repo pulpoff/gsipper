@@ -1,3 +1,22 @@
+gsipper (1.2.6-1) unstable; urgency=medium
+
+  * Drop G.729 / G.726 / G.723.1 from the codec set. Account >
+    Advanced > Codecs now only shows Opus, G.722, G.722.1, G.711
+    a-law / µ-law and GSM. _sanitize_codecs strips the retired
+    codec ids out of any settings.json carried over from earlier
+    1.2.x versions, so the UI is clean after upgrade with no
+    manual edits.
+  * build.sh: libbcg729-dev removed from PJ_BUILD_DEPS, and the
+    pjproject configure line passes --disable-bcg729. The
+    resulting _pjsua2.so has no DT_NEEDED entry for libbcg729 at
+    all, so the deb no longer needs to recommend libbcg729-0.
+  * debian/control.in: libbcg729-0 dropped from Recommends.
+  * debian/postinst: the libbcg729-targeted hint is gone; only
+    the generic 'sudo gsipper --install-pjsua2' fallback remains
+    for any other pjsua2 import error.
+
+ -- pulpoff <noreply@pulpoff.com>  Tue, 19 May 2026 00:00:00 +0000
+
 gsipper (1.2.5-1) unstable; urgency=medium
 
   * './build.sh --pjsua2' now FORCES a rebuild. Previously it
