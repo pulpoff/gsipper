@@ -1,3 +1,15 @@
+gsipper (1.2.2-1) unstable; urgency=medium
+
+  * Migrate existing settings.json on load: codecs added in newer
+    gsipper versions are now appended to the user's saved codec
+    list instead of being silently dropped. _sanitize_codecs
+    preserves the user's existing ordering / enabled state and
+    only appends new defaults at the bottom. Fixes 'i dont see new
+    codecs in account extra options where all codecs are' after
+    upgrading from 1.1.x to 1.2.x.
+
+ -- pulpoff <noreply@pulpoff.com>  Tue, 19 May 2026 00:00:00 +0000
+
 gsipper (1.2.1-1) unstable; urgency=medium
 
   * Expose more codecs in the default Account > Advanced > Codecs

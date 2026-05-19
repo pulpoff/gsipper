@@ -82,22 +82,40 @@ def _dataclass_from_dict(cls, data: dict):
 
 
 def _sanitize_codecs(raw) -> List[dict]:
+    defaults = default_codecs()
     if not isinstance(raw, list):
-        return default_codecs()
-    cleaned = []
+        return defaults
+    cleaned: List[dict] = []
+    seen_ids: set = set()
     for item in raw:
         if not isinstance(item, dict):
             continue
         cid = item.get("id")
-        name = item.get("name") or cid
         if not cid:
             continue
+        name = item.get("name") or cid
         cleaned.append({
             "id": str(cid),
             "name": str(name),
             "enabled": bool(item.get("enabled", True)),
         })
-    return cleaned or default_codecs()
+        seen_ids.add(str(cid))
+    if not cleaned:
+        return defaults
+    # Append any codecs introduced in newer gsipper versions that
+    # aren't in the user's saved list. Preserves the user's existing
+    # ordering and enabled/disabled state for the codecs they already
+    # configured; just adds the new entries at the bottom so they
+    # surface in Account > Advanced > Codecs without the user having
+    # to wipe settings.json.
+    for d in defaults:
+        if d["id"] not in seen_ids:
+            cleaned.append({
+                "id": d["id"],
+                "name": d["name"],
+                "enabled": bool(d.get("enabled", True)),
+            })
+    return cleaned
 
 
 def load_settings() -> Settings:
