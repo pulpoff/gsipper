@@ -229,15 +229,6 @@ class SipEndpoint:
         self._message_status_handler = None  # type: Optional[Callable]
         self._active_call = None  # type: Optional["SipCall"]
         self._worker: Optional[_SipWorker] = None
-        # PJSUA2's Python wrapper releases the underlying pj_call as
-        # soon as the last Python reference goes away. Setting
-        # _active_call=None at the 'ended' state can therefore trigger
-        # GC BEFORE pjsua2 has finished delivering the BYE on the wire
-        # — the remote / provider then keeps the dialog open.
-        # We park ended calls here for a few seconds to let PJSIP's
-        # post-disconnect cleanup (BYE retransmits, TXN settle, RTP
-        # teardown) complete before GC.
-        self._call_graveyard: List = []
         self._pj_log_bridge = None  # must outlive the endpoint
         if not HAVE_PJSUA2:
             logger.error(
@@ -394,7 +385,6 @@ class SipEndpoint:
     def _do_shutdown(self) -> None:
         with self._lock:
             self._teardown_account_locked()
-            self._call_graveyard.clear()
             if self._ep is not None:
                 try:
                     self._ep.libDestroy()
@@ -604,6 +594,15 @@ class SipEndpoint:
                 wav_path = call.stop_recording()
             except Exception:
                 logger.exception("stop_recording raised")
+            # Detach the live recorder ref from the call now so it
+            # doesn't get GC'd on this (GTK) thread when self._active_call
+            # is cleared below. _dispose_via_worker re-hands it to the
+            # pjsua2-registered worker for the actual ref-drop.
+            recorder = None
+            try:
+                recorder = call.take_recorder()
+            except Exception:
+                logger.exception("take_recorder raised")
             if wav_path:
                 mp3_path = wav_path[:-4] + ".mp3"
                 threading.Thread(
@@ -615,11 +614,15 @@ class SipEndpoint:
             self._record_history(call, recording_path=mp3_path or "")
             if call is self._active_call:
                 self._active_call = None
-            # Hold a reference so PJSIP can finish BYE/200 OK + TXN
-            # cleanup before SWIG drops pj_call. 5 s is plenty for any
-            # sane RTT.
-            self._call_graveyard.append(call)
-            GLib.timeout_add_seconds(5, self._reap_call, call)
+            # Hold both refs for 5 s so PJSIP can finish BYE / 200 OK /
+            # TXN cleanup, then hand them to the worker thread which
+            # lets the local closure vars go out of scope on a
+            # pjsua2-registered thread — that's where SWIG fires the
+            # pjmedia_wav_writer_port_destroy / pjsua_call_close
+            # destructors safely.
+            GLib.timeout_add_seconds(
+                5, self._dispose_via_worker, call, recorder,
+            )
         if self._call_state_handler is not None:
             try:
                 self._call_state_handler(call, state)
@@ -627,12 +630,20 @@ class SipEndpoint:
                 logger.exception("handler raised")
         return False  # GLib.idle_add: do not repeat
 
-    def _reap_call(self, call) -> bool:
-        try:
-            self._call_graveyard.remove(call)
-        except ValueError:
-            pass
-        return False  # one-shot timer
+    def _dispose_via_worker(self, call, recorder) -> bool:
+        """GLib timeout callback (GTK thread). Submits a no-op closure
+        whose default args hold the call + recorder refs onto the
+        worker thread. When the closure exits on the worker, those
+        refs drop and the SWIG destructors run on a registered
+        thread."""
+        self._worker.submit(lambda c=call, r=recorder: None)
+        return False  # one-shot
+        if self._call_state_handler is not None:
+            try:
+                self._call_state_handler(call, state)
+            except Exception:
+                logger.exception("handler raised")
+        return False  # GLib.idle_add: do not repeat
 
     @staticmethod
     def _record_history(call, recording_path: str = "") -> None:

@@ -174,17 +174,23 @@ if HAVE_PJSUA2:
                 self._recorder = None
 
         def stop_recording(self) -> Optional[str]:
-            """Close the WAV recorder. Returns the WAV path, or None if
-            nothing was being recorded. Caller (the endpoint) handles
-            mp3 conversion off the worker thread."""
+            """Detach the recorder reference from this call and return
+            the WAV path (or None if no recording was running). The
+            caller MUST schedule the recorder's final ref-drop on the
+            pjsua2 worker thread — SWIG's destructor invokes pjmedia
+            cleanup, which asserts when it runs on an unregistered
+            thread."""
             if self._recorder is None:
                 return None
-            try:
-                self._recorder.delete()
-            except Exception:
-                logger.exception("recorder delete failed")
-            self._recorder = None
             return self.record_to
+
+        def take_recorder(self):
+            """Hand off the live recorder so the worker thread can
+            drop the last reference (and trigger the SWIG destructor)
+            on a pjsua2-registered thread."""
+            rec = self._recorder
+            self._recorder = None
+            return rec
 
         # --------------------------------------------------------------
         # Helpers
