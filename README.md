@@ -58,13 +58,41 @@ ground up with native GNOME widgets and PJSIP's PJSUA2 Python bindings.
 - Status dot in the window header bar — green online, yellow connecting,
   red offline; tooltip carries the SIP reason text.
 
+**Call recording**
+
+- Per-call toggle in Window → Settings → "Record calls". When on, every
+  connected call is recorded to WAV via PJSUA2's `AudioMediaRecorder`
+  (mixed mic + remote), then converted to MP3 with `ffmpeg` on hangup.
+- Recordings live in `~/.local/share/gsipper/recordings/` as
+  `YYYYMMDD-HHMMSS_<peer>.mp3`.
+- Rows in the Calls tab with a saved recording show a ▶ button. Clicking
+  it opens a modal player (GStreamer `playbin`) with a draggable
+  timeline and play / pause / stop transport buttons.
+
+**Settings & autostart**
+
+- Window → Settings dialog exposes:
+  - **Start minimized** — launch hidden in the tray; SIP still
+    registers, the dot turns green, ringtone + incoming popup still
+    fire. Re-launching from the app grid or clicking Show in the
+    tray-extension menu restores the window.
+  - **Run on start** — writes / removes
+    `~/.config/autostart/com.pulpoff.gsipper.desktop` so the app
+    auto-launches on login. Combine with "Start minimized" for the
+    classic always-on-tray setup.
+  - **Record calls** — see above; disabled with an inline hint when
+    `ffmpeg` is missing from `PATH`.
+
 **Desktop integration**
 
 - App-grid entry, `tel:` / `sip:` / `sips:` URI handler, hicolor icon.
+- Window X button hides to the tray; SIP keeps running so incoming
+  calls still ring. Real quit goes through the in-window menu, Ctrl+Q,
+  or the tray-extension's Quit (D-Bus).
 - AyatanaAppIndicator tray icon (when available) mirroring the status
   dot.
 - GNOME Shell status-bar extension (`gsipper@pulpoff.com`) for shells
-  45-48, talking to the app over D-Bus.
+  45-49, talking to the app over D-Bus.
 - All PJSIP calls run on a dedicated worker thread so the GTK main loop
   never blocks on registration, INVITE/BYE, or `MESSAGE`.
 
@@ -98,7 +126,7 @@ python3 -m gsipper
 
 ```sh
 ./build.sh --deb
-sudo apt install ./dist/gsipper_1.1.0_amd64.deb
+sudo apt install ./dist/gsipper_1.0.2_amd64.deb
 sudo gsipper --install-pjsua2     # compile PJSUA2 bindings (one-time)
 ```
 

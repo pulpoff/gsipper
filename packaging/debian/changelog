@@ -1,4 +1,4 @@
-gsipper (1.1.0-1) unstable; urgency=medium
+gsipper (1.0.2-1) unstable; urgency=medium
 
   * Settings dialog (start minimized / run on start / record calls).
   * Call recording: WAV via PJSUA2, MP3 conversion via ffmpeg,
