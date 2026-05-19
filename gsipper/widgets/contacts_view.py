@@ -1,11 +1,15 @@
-"""Contacts view — searchable list of saved contacts.
+"""Contacts view — searchable list with Add and Import buttons.
 
-Mirrors MicroSIP's Contacts tab: a search entry at top and a list below.
-Full CRUD (add/edit/delete) lands in step 6; this placeholder shows the
-empty state and the search bar so the layout matches from day one.
+Reads / writes ~/.local/share/gsipper/contacts.json. Click a row to
+place a call to the contact's primary target (SIP URI if set, else
+the first phone number). Import accepts vCard 3.0/4.0 (.vcf) or
+Google Contacts CSV (.csv).
 """
 
 from __future__ import annotations
+
+import logging
+from typing import Callable, List, Optional
 
 import gi
 
@@ -19,36 +23,278 @@ try:
 except (ValueError, ImportError):
     pass
 
-from gi.repository import Gtk  # noqa: E402
+from gi.repository import Gio, GLib, GObject, Gtk  # noqa: E402
+
+from ..storage import contacts as contacts_store
+from ..storage.contact_import import import_file
+from ..storage.contacts import Contact
+
+
+logger = logging.getLogger(__name__)
 
 
 class ContactsView(Gtk.Box):
+    __gsignals__ = {
+        # Fired when the user clicks a contact row; payload is the
+        # SIP URI or raw phone number.
+        "call-requested": (GObject.SignalFlags.RUN_FIRST, None, (str,)),
+    }
+
     def __init__(self) -> None:
         super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=0)
 
-        search = Gtk.SearchEntry()
-        search.set_placeholder_text("Search contacts…")
-        search.set_margin_top(8)
-        search.set_margin_bottom(8)
-        search.set_margin_start(8)
-        search.set_margin_end(8)
-        self.append(search)
+        self._contacts: List[Contact] = contacts_store.load_contacts()
+        self._query: str = ""
+
+        # Top action bar: search, Add, Import.
+        top = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6,
+                      margin_top=8, margin_bottom=8,
+                      margin_start=8, margin_end=8)
+
+        self._search = Gtk.SearchEntry()
+        self._search.set_placeholder_text("Search contacts…")
+        self._search.set_hexpand(True)
+        self._search.connect("search-changed", self._on_search_changed)
+        top.append(self._search)
+
+        add_btn = Gtk.Button(icon_name="list-add-symbolic", tooltip_text="Add contact")
+        add_btn.add_css_class("flat")
+        add_btn.connect("clicked", lambda *_: self._open_add_dialog())
+        top.append(add_btn)
+
+        import_btn = Gtk.Button(icon_name="document-open-symbolic",
+                                tooltip_text="Import contacts.vcf or contacts.csv")
+        import_btn.add_css_class("flat")
+        import_btn.connect("clicked", lambda *_: self._open_import_picker())
+        top.append(import_btn)
+
+        self.append(top)
+
+        # Empty state ↔ list.
+        self._stack = Gtk.Stack()
+        self._stack.set_vexpand(True)
 
         if _USE_ADW:
-            status = Adw.StatusPage(
+            self._empty = Adw.StatusPage(
                 icon_name="system-users-symbolic",
                 title="No contacts yet",
-                description="Add contacts to call or message them with one click.",
+                description="Use the + button above to add a contact, "
+                            "or the open icon to import a vCard or Google CSV.",
             )
-            add_btn = Gtk.Button(label="Add contact")
-            add_btn.add_css_class("suggested-action")
-            add_btn.add_css_class("pill")
-            add_btn.set_halign(Gtk.Align.CENTER)
-            status.set_child(add_btn)
-            status.set_vexpand(True)
-            self.append(status)
         else:
-            empty = Gtk.Label(label="No contacts yet")
-            empty.set_vexpand(True)
-            empty.add_css_class("dim-label")
-            self.append(empty)
+            self._empty = Gtk.Label(label="No contacts yet")
+            self._empty.add_css_class("dim-label")
+        self._stack.add_named(self._empty, "empty")
+
+        self._listbox = Gtk.ListBox()
+        self._listbox.set_selection_mode(Gtk.SelectionMode.NONE)
+        self._listbox.add_css_class("navigation-sidebar")
+        self._listbox.set_filter_func(self._row_filter)
+        scrolled = Gtk.ScrolledWindow()
+        scrolled.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        scrolled.set_child(self._listbox)
+        scrolled.set_vexpand(True)
+        self._stack.add_named(scrolled, "list")
+
+        self.append(self._stack)
+
+        self._rebuild_rows()
+
+    # ------------------------------------------------------------------
+    # Search filter
+    # ------------------------------------------------------------------
+
+    def _on_search_changed(self, entry: Gtk.SearchEntry) -> None:
+        self._query = entry.get_text().strip()
+        self._listbox.invalidate_filter()
+
+    def _row_filter(self, row) -> bool:
+        contact = getattr(row, "_contact", None)
+        if contact is None:
+            return True
+        return contact.matches(self._query)
+
+    # ------------------------------------------------------------------
+    # Row rendering
+    # ------------------------------------------------------------------
+
+    def _rebuild_rows(self) -> None:
+        child = self._listbox.get_first_child()
+        while child is not None:
+            nxt = child.get_next_sibling()
+            self._listbox.remove(child)
+            child = nxt
+
+        if not self._contacts:
+            self._stack.set_visible_child_name("empty")
+            return
+
+        # Stable sort by name.
+        for contact in sorted(self._contacts, key=lambda c: c.name.casefold()):
+            row = self._make_row(contact)
+            row._contact = contact  # type: ignore[attr-defined]
+            self._listbox.append(row)
+        self._stack.set_visible_child_name("list")
+
+    def _make_row(self, contact: Contact):
+        subtitle_bits = []
+        if contact.organization:
+            subtitle_bits.append(contact.organization)
+        if contact.sip_uri:
+            subtitle_bits.append(contact.sip_uri)
+        elif contact.phones:
+            label = contact.phones[0].get("label", "")
+            number = contact.phones[0].get("number", "")
+            subtitle_bits.append(f"{label}: {number}" if label else number)
+
+        if _USE_ADW:
+            row = Adw.ActionRow(
+                title=contact.name or "(unnamed)",
+                subtitle="  ·  ".join(subtitle_bits),
+            )
+            row.set_activatable(True)
+            avatar = Gtk.Image.new_from_icon_name("avatar-default-symbolic")
+            avatar.set_pixel_size(28)
+            row.add_prefix(avatar)
+
+            call_btn = Gtk.Button(icon_name="call-start-symbolic",
+                                  valign=Gtk.Align.CENTER)
+            call_btn.add_css_class("flat")
+            call_btn.set_tooltip_text("Call")
+            call_btn.connect("clicked", lambda *_: self._dial(contact))
+            row.add_suffix(call_btn)
+
+            menu_btn = Gtk.MenuButton(icon_name="view-more-symbolic",
+                                      valign=Gtk.Align.CENTER)
+            menu_btn.add_css_class("flat")
+            menu_btn.set_menu_model(self._row_menu(contact))
+            row.add_suffix(menu_btn)
+
+            row.connect("activated", lambda *_: self._dial(contact))
+            return row
+
+        # Fallback for vanilla GTK.
+        box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8,
+                      margin_top=6, margin_bottom=6,
+                      margin_start=10, margin_end=10)
+        avatar = Gtk.Image.new_from_icon_name("avatar-default-symbolic")
+        avatar.set_pixel_size(28)
+        box.append(avatar)
+        text = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, hexpand=True)
+        title = Gtk.Label(label=contact.name or "(unnamed)", xalign=0.0)
+        title.add_css_class("heading")
+        text.append(title)
+        if subtitle_bits:
+            sub = Gtk.Label(label="  ·  ".join(subtitle_bits), xalign=0.0)
+            sub.add_css_class("dim-label")
+            sub.add_css_class("caption")
+            text.append(sub)
+        box.append(text)
+        click = Gtk.GestureClick()
+        click.connect("released", lambda *_: self._dial(contact))
+        box.add_controller(click)
+        return box
+
+    def _row_menu(self, contact: Contact) -> Gio.Menu:
+        menu = Gio.Menu()
+        # If a contact has multiple numbers, list them all so the user
+        # can pick which to dial. The current implementation just emits
+        # the primary; per-number dial lands in a future iteration.
+        for idx, phone in enumerate(contact.phones[:5]):
+            label = phone.get("label") or "phone"
+            number = phone.get("number") or ""
+            if number:
+                menu.append(f"Call {label}: {number}",
+                            f"contacts.dial::{contact.id}|{idx}")
+        edit_section = Gio.Menu()
+        edit_section.append("Edit…", f"contacts.edit::{contact.id}")
+        edit_section.append("Delete", f"contacts.delete::{contact.id}")
+        menu.append_section(None, edit_section)
+        return menu
+
+    # ------------------------------------------------------------------
+    # Dialing
+    # ------------------------------------------------------------------
+
+    def _dial(self, contact: Contact) -> None:
+        target = contact.primary_target()
+        if not target:
+            return
+        logger.info("dial from contact: %s -> %s", contact.name, target)
+        self.emit("call-requested", target)
+
+    # ------------------------------------------------------------------
+    # Add + Import
+    # ------------------------------------------------------------------
+
+    def _open_add_dialog(self) -> None:
+        from ..dialogs.add_contact_dialog import AddContactDialog
+        win = self.get_root()
+        AddContactDialog(parent=win, on_save=self._on_contact_saved).present()
+
+    def _on_contact_saved(self, contact: Contact) -> None:
+        # Replace if id exists, otherwise append.
+        for i, existing in enumerate(self._contacts):
+            if existing.id == contact.id:
+                self._contacts[i] = contact
+                break
+        else:
+            self._contacts.append(contact)
+        contacts_store.save_contacts(self._contacts)
+        self._rebuild_rows()
+
+    def _open_import_picker(self) -> None:
+        dialog = Gtk.FileDialog()
+        dialog.set_title("Import contacts")
+        filt_all = Gtk.FileFilter()
+        filt_all.set_name("vCard or Google CSV")
+        filt_all.add_suffix("vcf")
+        filt_all.add_suffix("csv")
+        filt_all.add_mime_type("text/vcard")
+        filt_all.add_mime_type("text/x-vcard")
+        filt_all.add_mime_type("text/csv")
+        filt_vcf = Gtk.FileFilter()
+        filt_vcf.set_name("vCard (.vcf)")
+        filt_vcf.add_suffix("vcf")
+        filt_csv = Gtk.FileFilter()
+        filt_csv.set_name("CSV (.csv)")
+        filt_csv.add_suffix("csv")
+        filters = Gio.ListStore.new(Gtk.FileFilter)
+        filters.append(filt_all)
+        filters.append(filt_vcf)
+        filters.append(filt_csv)
+        dialog.set_filters(filters)
+        dialog.set_default_filter(filt_all)
+
+        win = self.get_root()
+        dialog.open(win, None, self._on_import_picked)
+
+    def _on_import_picked(self, dialog: Gtk.FileDialog, result) -> None:
+        try:
+            f = dialog.open_finish(result)
+        except GLib.Error as exc:
+            # User cancelled, etc.
+            if "dismissed" not in str(exc).lower():
+                logger.info("import picker error: %s", exc)
+            return
+        path = f.get_path()
+        if not path:
+            return
+        try:
+            imported = import_file(path)
+        except Exception as exc:
+            logger.error("import failed: %s", exc)
+            self._toast(f"Import failed: {exc}")
+            return
+        added = contacts_store.merge_imported(self._contacts, imported)
+        contacts_store.save_contacts(self._contacts)
+        self._rebuild_rows()
+        logger.info("imported %d new contacts from %s", added, path)
+        self._toast(f"Imported {added} new contact{'' if added == 1 else 's'}")
+
+    # ------------------------------------------------------------------
+    # Misc
+    # ------------------------------------------------------------------
+
+    def _toast(self, message: str) -> None:
+        logger.info("%s", message)
