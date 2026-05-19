@@ -36,6 +36,7 @@ class CallRecord:
     status: str = "completed"     # see module docstring
     status_code: int = 0
     status_reason: str = ""
+    recording_path: str = ""      # absolute path to the converted .mp3
 
 
 def load_history() -> List[CallRecord]:

@@ -106,7 +106,16 @@ class GsipperApp(_BaseApp):
         return self._status_service
 
     def do_activate(self) -> None:
-        self._ensure_window().present()
+        """Initial activation. Honour Settings > Start minimized: build
+        the window (so SIP registers and the tray icon appears) but
+        keep it hidden until the user re-launches gsipper or clicks
+        Show on the tray-extension menu."""
+        win = self._ensure_window()
+        from .storage.settings import load_settings
+        if load_settings().general.start_minimized:
+            win.set_visible(False)
+        else:
+            win.present()
 
     def do_shutdown(self) -> None:
         """Run on real app quit (win.quit / Ctrl+Q / D-Bus Quit). The

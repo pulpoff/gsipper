@@ -23,8 +23,13 @@ priorities (highest = first row).
 from __future__ import annotations
 
 import logging
+import os
 import queue
+import re
+import shutil
+import subprocess
 import threading
+from datetime import datetime
 from typing import Callable, List, Optional
 
 from gi.repository import GLib
@@ -39,7 +44,43 @@ except Exception as _exc:  # ImportError, but also catches loader errors
     PJSUA2_IMPORT_ERROR = f"{type(_exc).__name__}: {_exc}"
 
 from .. import __version__
-from ..storage.settings import AccountSettings
+from ..storage.settings import AccountSettings, load_settings
+
+
+_RECORDINGS_DIR = os.path.join(
+    os.environ.get("XDG_DATA_HOME", os.path.expanduser("~/.local/share")),
+    "gsipper", "recordings",
+)
+
+
+def _build_record_path(peer: str) -> Optional[str]:
+    """Recording target for a call if the user enabled call records,
+    else None. Path is in ~/.local/share/gsipper/recordings."""
+    if not load_settings().general.call_records:
+        return None
+    if shutil.which("ffmpeg") is None:
+        logger.warning("call records enabled but ffmpeg missing; skipping")
+        return None
+    safe = re.sub(r"\W+", "_", peer or "unknown")[:32] or "unknown"
+    ts = datetime.now().strftime("%Y%m%d-%H%M%S")
+    return os.path.join(_RECORDINGS_DIR, f"{ts}_{safe}.wav")
+
+
+def _convert_wav_to_mp3(wav_path: str, mp3_path: str) -> None:
+    """Run ffmpeg off the worker thread. Deletes the WAV on success."""
+    try:
+        subprocess.run(
+            ["ffmpeg", "-y", "-loglevel", "error", "-i", wav_path,
+             "-c:a", "libmp3lame", "-q:a", "4", mp3_path],
+            check=True,
+        )
+        try:
+            os.unlink(wav_path)
+        except OSError:
+            pass
+        logger.info("recording converted: %s", mp3_path)
+    except Exception:
+        logger.exception("ffmpeg conversion failed: %s -> %s", wav_path, mp3_path)
 
 if False:  # type-check only
     from .call import SipCall
@@ -362,7 +403,12 @@ class SipEndpoint:
             return
         logger.info("make_call: %s", uri)
         try:
-            call = SipCall(self._account, self._on_call_state_internal)
+            from .call import _short_peer
+            call = SipCall(
+                self._account,
+                self._on_call_state_internal,
+                record_to=_build_record_path(_short_peer(uri) or "outgoing"),
+            )
             call.peer_uri = uri
             call.peer_display = uri
             op = pj.CallOpParam(True)
@@ -513,7 +559,21 @@ class SipEndpoint:
 
     def _on_call_state_internal(self, call, state: str) -> bool:
         if state == "ended":
-            self._record_history(call)
+            wav_path = None
+            mp3_path = None
+            try:
+                wav_path = call.stop_recording()
+            except Exception:
+                logger.exception("stop_recording raised")
+            if wav_path:
+                mp3_path = wav_path[:-4] + ".mp3"
+                threading.Thread(
+                    target=_convert_wav_to_mp3,
+                    args=(wav_path, mp3_path),
+                    name="gsipper-mp3",
+                    daemon=True,
+                ).start()
+            self._record_history(call, recording_path=mp3_path or "")
             if call is self._active_call:
                 self._active_call = None
             # Hold a reference so PJSIP can finish BYE/200 OK + TXN
@@ -536,9 +596,7 @@ class SipEndpoint:
         return False  # one-shot timer
 
     @staticmethod
-    def _record_history(call) -> None:
-        from datetime import datetime
-
+    def _record_history(call, recording_path: str = "") -> None:
         from ..storage.history import CallRecord, append_call
 
         direction = "incoming" if getattr(call, "incoming", False) else "outgoing"
@@ -569,6 +627,7 @@ class SipEndpoint:
             status=status,
             status_code=int(getattr(call, "last_status_code", 0)),
             status_reason=str(getattr(call, "last_status_text", "")),
+            recording_path=recording_path,
         )
         try:
             append_call(record)
@@ -598,14 +657,20 @@ class SipEndpoint:
         let onCallState bubble the 'incoming' state up to the UI."""
         from .call import SipCall, _short_peer
         try:
-            call = SipCall(account, self._on_call_state_internal,
-                           call_id=call_id, incoming=True)
+            # Probe the peer URI first so the recording filename can use
+            # a human-readable name (we need a SipCall instance first
+            # though — pjsua2 ties them to the call_id).
+            tmp = SipCall(account, self._on_call_state_internal,
+                          call_id=call_id, incoming=True)
             try:
-                info = call.getInfo()
-                call.peer_uri = str(info.remoteUri or "")
-                call.peer_display = _short_peer(call.peer_uri) or call.peer_uri
+                info = tmp.getInfo()
+                peer_uri = str(info.remoteUri or "")
             except Exception:
-                pass
+                peer_uri = ""
+            tmp.peer_uri = peer_uri
+            tmp.peer_display = _short_peer(peer_uri) or peer_uri
+            tmp.record_to = _build_record_path(tmp.peer_display or "incoming")
+            call = tmp
             logger.info("incoming call from %s", call.peer_display or "?")
             # Reject second concurrent call with 486 Busy.
             if self._active_call is not None:
