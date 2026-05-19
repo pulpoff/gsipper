@@ -59,7 +59,6 @@ class MainWindow(_BaseWindow):
         app.set_accels_for_action("win.quit", ["<Control>q"])
         app.set_accels_for_action("win.close", ["<Control>w"])
         app.set_accels_for_action("win.account", ["<Control>comma"])
-        app.set_accels_for_action("win.settings", ["<Control>p"])
 
         self.connect("close-request", self._on_window_close)
 
@@ -112,7 +111,6 @@ class MainWindow(_BaseWindow):
     def _install_actions(self, app) -> None:
         for name, handler in {
             "account": self._action_account,
-            "settings": self._action_settings,
             "about": self._action_about,
             "quit": self._action_quit,
             "close": self._action_close,
@@ -126,7 +124,6 @@ class MainWindow(_BaseWindow):
 
         account_section = Gio.Menu()
         account_section.append("Account…", "win.account")
-        account_section.append("Settings…", "win.settings")
         menu.append_section(None, account_section)
 
         meta_section = Gio.Menu()

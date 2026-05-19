@@ -33,7 +33,9 @@ class AccountDialog(Adw.PreferencesWindow):
         self.set_transient_for(parent)
         self.set_modal(True)
         self.set_search_enabled(False)
-        self.set_default_size(520, 640)
+        # All nine rows + three group headers + headerbar -> ~820 px;
+        # open big enough that nothing requires scrolling/resizing.
+        self.set_default_size(560, 860)
 
         self._account = account
         self._on_save = on_save

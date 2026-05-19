@@ -4,9 +4,10 @@ Owns the SIP transport, codec configuration and the active account.
 All PJSIP callbacks marshal back to the GTK main loop via GLib.idle_add
 so the rest of the app can pretend SIP is single-threaded.
 
-G.722, G.711 (PCMU+PCMA) and G.726 are always in stock pjproject;
-G.729 may be absent unless distros build it with bcg729. We enable
-whatever is present and report the rest as unavailable.
+G.722, G.711 (PCMU+PCMA) and G.726 are always in stock pjproject.
+G.729 is intentionally skipped for now — re-enable by adding
+("G729/8000", 220) to _CODEC_PRIORITIES if you're on a pjproject
+built with bcg729.
 """
 
 from __future__ import annotations
@@ -33,7 +34,6 @@ _CODEC_PRIORITIES: List[Tuple[str, int]] = [
     ("PCMU/8000", 245),
     ("G722/16000", 240),
     ("G726-32/8000", 230),
-    ("G729/8000", 220),
 ]
 
 
