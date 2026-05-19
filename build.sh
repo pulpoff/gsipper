@@ -50,7 +50,7 @@ PJ_BUILD_DEPS=(
     uuid-dev
 )
 
-PJ_VERSION="2.14.1"
+PJ_VERSION="2.15"   # 2.14.x SWIG bindings do not compile on GCC 13+
 PJ_CACHE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/gsipper/pjproject-${PJ_VERSION}"
 
 install_deps() {
@@ -130,6 +130,11 @@ build_pjsip() {
     fi
 
     cd pjsip-apps/src/swig/python
+    # SWIG-generated pjsua2_wrap.cpp uses pre-C++17 iterator idioms
+    # that GCC 13+ (Ubuntu 24.04 and newer) refuses by default.
+    # -fpermissive demotes those errors to warnings.
+    CFLAGS="-fPIC -fpermissive ${CFLAGS:-}" \
+    CXXFLAGS="-fPIC -fpermissive ${CXXFLAGS:-}" \
     make
     "$PYTHON" setup.py install --user
 
