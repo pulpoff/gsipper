@@ -4,9 +4,8 @@
 
 <h1 align="center">gsipper</h1>
 
-A modern GTK4 + libadwaita SIP client for the GNOME desktop, modelled on
-the workflow of [MicroSIP](https://www.microsip.org/) but built from the
-ground up with native GNOME widgets and PJSIP's PJSUA2 Python bindings.
+A modern, native GNOME SIP client built with GTK4 + libadwaita and
+PJSIP's PJSUA2 Python bindings.
 
 <p align="center">
   <img src="gsipper.png" alt="gsipper screenshot" width="360">
@@ -55,8 +54,12 @@ ground up with native GNOME widgets and PJSIP's PJSUA2 Python bindings.
 - Adw.PreferencesDialog account editor (Basic + Advanced) with
   server / username / password, transport (UDP / TCP / TLS), STUN, codec
   priority list and a few NAT / keep-alive knobs.
+- Codecs shipped pre-compiled in the .deb: **Opus**, **G.722**, **G.711
+  a-law / µ-law**, **G.729** (via bcg729), **GSM Full-Rate**, **G.726-32**.
+  Each is selectable and reorderable in Account → Advanced → Codecs.
 - Status dot in the window header bar — green online, yellow connecting,
-  red offline; tooltip carries the SIP reason text.
+  red offline; clickable for Connect / Disconnect / Reconnect / Exit;
+  tooltip carries the SIP reason text.
 
 **Call recording**
 
@@ -129,7 +132,7 @@ python3 -m gsipper
 
 ```sh
 ./build.sh --deb
-sudo apt install ./dist/gsipper_1.1.1_amd64.deb
+sudo apt install ./dist/gsipper_1.2.0_amd64.deb
 sudo gsipper --install-pjsua2     # compile PJSUA2 bindings (one-time)
 ```
 
