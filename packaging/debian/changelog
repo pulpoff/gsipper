@@ -1,3 +1,11 @@
+gsipper (1.3.4-1) unstable; urgency=medium
+
+  * Drop the word 'Sponsored' from the callagent.pro attribution
+    landed in 1.3.3. About-dialog developer line is now just
+    'by callagent.pro'; README footer matches.
+
+ -- pulpoff <noreply@pulpoff.com>  Tue, 19 May 2026 00:00:00 +0000
+
 gsipper (1.3.3-1) unstable; urgency=medium
 
   * About dialog: developer line changes from 'pulpoff' to

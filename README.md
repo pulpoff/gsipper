@@ -132,7 +132,7 @@ python3 -m gsipper
 
 ```sh
 ./build.sh --deb
-sudo apt install ./dist/gsipper_1.3.3_amd64.deb
+sudo apt install ./dist/gsipper_1.3.4_amd64.deb
 sudo gsipper --install-pjsua2     # compile PJSUA2 bindings (one-time)
 ```
 
@@ -156,5 +156,5 @@ gnome-extensions enable gsipper@pulpoff.com
 ---
 
 <p align="center">
-  Sponsored by <a href="https://callagent.pro">callagent.pro</a>
+  by <a href="https://callagent.pro">callagent.pro</a>
 </p>

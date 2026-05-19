@@ -740,7 +740,7 @@ class MainWindow(_BaseWindow):
                 application_name="gsipper",
                 application_icon="gsipper",
                 version=__version__,
-                developer_name="Sponsored by callagent.pro",
+                developer_name="by callagent.pro",
                 license_type=Gtk.License.GPL_2_0,
                 website="https://callagent.pro",
                 comments="Modern GNOME SIP client",
