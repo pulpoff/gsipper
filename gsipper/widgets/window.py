@@ -141,8 +141,8 @@ class MainWindow(_BaseWindow):
         stack.add_titled_with_icon(self.dialer, "dialer", "Dialer", "input-dialpad-symbolic")
         stack.add_titled_with_icon(self.contacts, "contacts", "Contacts", "system-users-symbolic")
         stack.add_titled_with_icon(self.calls, "calls", "Calls", "call-start-symbolic")
-        stack.add_titled_with_icon(self.messages, "messages", "Messages", "mail-unread-symbolic")
         self._stack = stack
+        self._apply_messages_visibility()
         stack.connect("notify::visible-child-name", self._on_view_switched)
 
         header.set_title_widget(Adw.WindowTitle(title="", subtitle=""))
@@ -165,7 +165,9 @@ class MainWindow(_BaseWindow):
         notebook.append_page(self.dialer, Gtk.Label(label="Dialer"))
         notebook.append_page(self.contacts, Gtk.Label(label="Contacts"))
         notebook.append_page(self.calls, Gtk.Label(label="Calls"))
-        notebook.append_page(self.messages, Gtk.Label(label="Messages"))
+        if self._settings.general.enable_messages:
+            notebook.append_page(self.messages, Gtk.Label(label="Messages"))
+        self._notebook = notebook
         notebook.set_vexpand(True)
         box.append(notebook)
         self.set_child(box)
@@ -231,6 +233,32 @@ class MainWindow(_BaseWindow):
     def _on_general_saved(self, general) -> None:
         self._settings.general = general
         save_settings(self._settings)
+        self._apply_messages_visibility()
+
+    def _apply_messages_visibility(self) -> None:
+        """Add / remove the Messages tab depending on the
+        general.enable_messages toggle. MessagesView itself stays
+        constructed either way, so toggling preserves stored chats."""
+        enabled = self._settings.general.enable_messages
+        in_view = self.messages.get_parent() is not None
+        if hasattr(self, "_stack"):
+            if enabled and not in_view:
+                self._stack.add_titled_with_icon(
+                    self.messages, "messages",
+                    "Messages", "mail-unread-symbolic")
+            elif not enabled and in_view:
+                # If the user happened to be viewing it, switch to Dialer.
+                if self._stack.get_visible_child_name() == "messages":
+                    self._stack.set_visible_child_name("dialer")
+                self._stack.remove(self.messages)
+        elif hasattr(self, "_notebook"):
+            if enabled and not in_view:
+                self._notebook.append_page(
+                    self.messages, Gtk.Label(label="Messages"))
+            elif not enabled and in_view:
+                idx = self._notebook.page_num(self.messages)
+                if idx != -1:
+                    self._notebook.remove_page(idx)
 
     def _on_account_saved(self, _account) -> None:
         save_settings(self._settings)

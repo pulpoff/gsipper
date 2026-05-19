@@ -1,3 +1,12 @@
+gsipper (1.0.5-1) unstable; urgency=medium
+
+  * Settings: new "Enable messages" toggle (default off). When off,
+    the Messages tab is hidden from the view switcher. Stored
+    conversations are preserved; turning the toggle back on
+    re-adds the tab in place. Toggling is live — no restart needed.
+
+ -- pulpoff <noreply@pulpoff.com>  Tue, 19 May 2026 00:00:00 +0000
+
 gsipper (1.0.4-1) unstable; urgency=medium
 
   * Reconnect now does a real reconnect: tears down the pjsua2

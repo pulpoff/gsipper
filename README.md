@@ -82,6 +82,9 @@ ground up with native GNOME widgets and PJSIP's PJSUA2 Python bindings.
     classic always-on-tray setup.
   - **Record calls** — see above; disabled with an inline hint when
     `ffmpeg` is missing from `PATH`.
+  - **Enable messages** — show or hide the Messages tab from the view
+    switcher. Off by default; toggling is live — no restart needed.
+    Stored conversations are kept either way.
 
 **Desktop integration**
 
@@ -126,7 +129,7 @@ python3 -m gsipper
 
 ```sh
 ./build.sh --deb
-sudo apt install ./dist/gsipper_1.0.4_amd64.deb
+sudo apt install ./dist/gsipper_1.0.5_amd64.deb
 sudo gsipper --install-pjsua2     # compile PJSUA2 bindings (one-time)
 ```
 
