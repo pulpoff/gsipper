@@ -345,6 +345,15 @@ class SipEndpoint:
         self._worker.submit(self._do_send_message, to_uri, body, message_id)
         return True
 
+    def set_registration(self, active: bool) -> None:
+        """Toggle the account's REGISTER binding. True re-registers
+        (also used to refresh an existing registration), False sends
+        an un-REGISTER."""
+        if not HAVE_PJSUA2:
+            return
+        self._ensure_worker()
+        self._worker.submit(self._do_set_registration, active)
+
     # ------------------------------------------------------------------
     # Worker-side implementations (run on _SipWorker; never on GTK)
     # ------------------------------------------------------------------
@@ -417,6 +426,26 @@ class SipEndpoint:
             logger.error("make_call failed: %s", exc, exc_info=True)
             return
         self._active_call = call
+
+    def _do_set_registration(self, active: bool) -> None:
+        # If the account was torn down because credentials were missing
+        # or the user previously disabled it, 'Connect' has to go back
+        # through configure_account to rebuild the pjsua2.Account.
+        if self._account is None:
+            if active:
+                self._do_configure_account(load_settings().account)
+            else:
+                self._notify_reg(False, 0, "Disconnected")
+            return
+        try:
+            self._account.setRegistration(active)
+            logger.info("setRegistration(%s) submitted", active)
+            if not active:
+                # PJSIP doesn't always fire onRegState for unregisters
+                # promptly; surface the change in the UI immediately.
+                self._notify_reg(False, 0, "Disconnected")
+        except Exception:
+            logger.exception("setRegistration(%s) failed", active)
 
     def _do_send_message(self, to_uri: str, body: str, message_id: str) -> None:
         if self._account is None:
