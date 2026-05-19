@@ -26,6 +26,33 @@
 .call-incoming { color: #2ec27e; }   /* GNOME green = incoming */
 .call-missed   { color: #c01c28; }   /* GNOME red = missed */
 
+/* SIP-IM chat bubbles. */
+.chat-bubble {
+    border-radius: 14px;
+    padding: 8px 12px;
+    min-width: 60px;
+}
+.chat-bubble-incoming {
+    background-color: alpha(currentColor, 0.10);
+}
+.chat-bubble-outgoing {
+    background-color: rgb(47, 30, 80);   /* brand purple */
+    color: white;
+}
+.chat-bubble-outgoing .dim-label {
+    color: rgba(255, 255, 255, 0.7);
+}
+
+/* Unread badge on conversation rows. */
+.chat-unread-badge {
+    background-color: rgb(47, 30, 80);
+    color: white;
+    border-radius: 10px;
+    padding: 2px 8px;
+    font-size: 0.85em;
+    font-weight: bold;
+}
+
 .dialer-number {
     font-size: 20pt;
     padding: 8px 12px;

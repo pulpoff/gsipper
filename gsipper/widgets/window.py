@@ -54,6 +54,8 @@ class MainWindow(_BaseWindow):
         self._sip = SipEndpoint.get()
         self._sip.set_reg_handler(self._on_reg_state)
         self._sip.set_call_state_handler(self._on_call_state)
+        self._sip.set_message_handler(self._on_sip_message)
+        self._sip.set_message_status_handler(self._on_sip_message_status)
         self._tray = TrayIndicator()
         self._ringer = Ringer()
         self._ringin_window: RinginWindow | None = None
@@ -73,6 +75,8 @@ class MainWindow(_BaseWindow):
         self.calls = CallsView()
         self.calls.connect("redial-requested", self._on_redial_requested)
         self.messages = MessagesView()
+        self.messages.connect("send-message", self._on_messages_send)
+        self.messages.connect("call-peer", self._on_messages_call)
 
         if _USE_ADW:
             self._build_adw_layout(menu_model)
@@ -309,6 +313,51 @@ class MainWindow(_BaseWindow):
         self.dialer.set_number(target)
         if _USE_ADW and hasattr(self, "_stack"):
             self._stack.set_visible_child_name("dialer")
+
+    # ------------------------------------------------------------------
+    # SIP messages
+    # ------------------------------------------------------------------
+
+    def _on_sip_message(self, from_uri: str, body: str, _content_type: str) -> None:
+        logger.info("incoming MESSAGE from %s", from_uri)
+        self.messages.on_incoming_message(
+            from_uri, body, display_resolver=self._lookup_contact_display,
+        )
+
+    def _on_sip_message_status(self, message_id: str, code: int, reason: str) -> None:
+        self.messages.on_message_status(message_id, code, reason)
+
+    def _on_messages_send(self, _view, peer_uri: str, body: str, message_id: str) -> None:
+        if not self._sip.send_message(peer_uri, body, message_id=message_id):
+            # send_message returns False if pjsua2 rejected the call;
+            # mark it as failed in the chat view immediately.
+            self.messages.on_message_status(message_id, 500, "Send failed")
+
+    def _on_messages_call(self, _view, peer_uri: str) -> None:
+        # Re-use the existing dial path so we get the same URI rewriting
+        # ('+' -> '00') and the in-call view swap.
+        self.dialer.set_number(peer_uri)
+        self._on_dial_requested(self.dialer, peer_uri)
+
+    def _lookup_contact_display(self, peer_uri: str) -> str:
+        """Best-effort: look up a stored contact whose SIP URI or phone
+        matches `peer_uri`, return its display name. Falls back to ''."""
+        try:
+            from ..storage.contacts import load_contacts
+            from ..storage.messages import normalise_uri
+            canonical = normalise_uri(peer_uri)
+            user_part = canonical.split("@", 1)[0] if "@" in canonical else canonical
+            digits = "".join(ch for ch in user_part if ch.isdigit())
+            for c in load_contacts():
+                if c.sip_uri and normalise_uri(c.sip_uri) == canonical:
+                    return c.name
+                for phone in c.phones:
+                    num_digits = "".join(ch for ch in phone.get("number", "") if ch.isdigit())
+                    if digits and num_digits and digits == num_digits:
+                        return c.name
+        except Exception:
+            pass
+        return ""
 
     def _on_call_state(self, call, state: str) -> None:
         logger.info("UI call state: %s peer=%s", state,
