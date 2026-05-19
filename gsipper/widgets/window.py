@@ -7,6 +7,8 @@ Contacts, Calls (history) and Messages — using native GNOME widgets
 
 from __future__ import annotations
 
+import logging
+
 import gi
 
 gi.require_version("Gtk", "4.0")
@@ -21,9 +23,14 @@ except (ValueError, ImportError):
 
 from gi.repository import Gio, Gtk  # noqa: E402
 
+from .. import log as gslog
 from ..dialogs.account_dialog import AccountDialog
-from ..sip.endpoint import SipEndpoint
+from ..dialogs.log_dialog import LogDialog
+from ..sip.endpoint import PJSUA2_IMPORT_ERROR, SipEndpoint
 from ..storage.settings import load_settings, save_settings
+
+
+logger = logging.getLogger(__name__)
 from .dialer_view import DialerView
 from .contacts_view import ContactsView
 from .calls_view import CallsView
@@ -111,6 +118,7 @@ class MainWindow(_BaseWindow):
     def _install_actions(self, app) -> None:
         for name, handler in {
             "account": self._action_account,
+            "log": self._action_log,
             "about": self._action_about,
             "quit": self._action_quit,
             "close": self._action_close,
@@ -125,6 +133,10 @@ class MainWindow(_BaseWindow):
         account_section = Gio.Menu()
         account_section.append("Account…", "win.account")
         menu.append_section(None, account_section)
+
+        tools_section = Gio.Menu()
+        tools_section.append("Log…", "win.log")
+        menu.append_section(None, tools_section)
 
         meta_section = Gio.Menu()
         meta_section.append("About gsipper", "win.about")
@@ -143,6 +155,12 @@ class MainWindow(_BaseWindow):
         )
         dialog.present()
 
+    def _action_log(self, *_args) -> None:
+        if not _USE_ADW:
+            self._toast("Log viewer requires libadwaita")
+            return
+        LogDialog(parent=self).present()
+
     def _action_settings(self, *_args) -> None:
         # TODO step 8: Adw.PreferencesWindow with audio / codecs / network
         self._toast("Settings: coming in step 8")
@@ -153,8 +171,15 @@ class MainWindow(_BaseWindow):
 
     def _apply_account_settings(self) -> None:
         if not self._sip.available:
-            self._set_status("No SIP backend", "error",
-                             tooltip="python3-pjsua2 is not installed")
+            tip = (
+                "python3-pjsua2 could not be imported. "
+                "Open the Log… menu for the full traceback."
+            )
+            if PJSUA2_IMPORT_ERROR:
+                tip += f"\n\n{PJSUA2_IMPORT_ERROR}"
+            logger.error("SIP backend missing: %s",
+                         PJSUA2_IMPORT_ERROR or "module not found")
+            self._set_status("No SIP backend", "error", tooltip=tip)
             return
         if not self._settings.account.enabled:
             self._set_status("Offline", None)
@@ -170,6 +195,7 @@ class MainWindow(_BaseWindow):
             self._set_status("Error", "error", tooltip=str(exc))
 
     def _on_reg_state(self, active: bool, code: int, reason: str) -> None:
+        logger.info("status: active=%s code=%s reason=%s", active, code, reason)
         if active:
             tip = self._codec_tooltip()
             self._set_status("Online", "success", tooltip=tip)
@@ -228,10 +254,8 @@ class MainWindow(_BaseWindow):
         self.close()
 
     def _toast(self, text: str) -> None:
-        if not _USE_ADW:
-            return
         # Toasts need an Adw.ToastOverlay; wire one in later.
-        print(f"[gsipper] {text}")
+        logger.info("%s", text)
 
     def handle_call_uri(self, uri: str) -> None:
         """Honor tel:/sip: command-line arg by pre-filling the dialer."""
