@@ -72,6 +72,7 @@ if HAVE_PJSUA2:
             on_state: CallStateHandler,
             call_id: int = -1,
             incoming: bool = False,
+            record_to: Optional[str] = None,
         ) -> None:
             super().__init__(account, call_id)
             self._on_state = on_state
@@ -85,6 +86,12 @@ if HAVE_PJSUA2:
             self.started_at: float = time.time()
             self.connected_at: Optional[float] = None
             self.ended_at: Optional[float] = None
+            # Recording: if record_to is a WAV path, _maybe_start_recording
+            # in onCallMediaState wires both directions to a recorder; the
+            # endpoint converts to mp3 on disconnect.
+            self.record_to: Optional[str] = record_to
+            self._recorder = None  # type: ignore[assignment]
+            self._recorder_started = False
 
         # --------------------------------------------------------------
         # pjsua2 callbacks
@@ -137,11 +144,47 @@ if HAVE_PJSUA2:
                 try:
                     aud = self.getAudioMedia(idx)
                     ep = pj.Endpoint.instance()
-                    ep.audDevManager().getCaptureDevMedia().startTransmit(aud)
-                    aud.startTransmit(ep.audDevManager().getPlaybackDevMedia())
+                    mic = ep.audDevManager().getCaptureDevMedia()
+                    spk = ep.audDevManager().getPlaybackDevMedia()
+                    mic.startTransmit(aud)
+                    aud.startTransmit(spk)
                     logger.info("audio media connected (idx=%d)", idx)
+                    self._maybe_start_recording(aud, mic)
                 except Exception as exc:
                     logger.error("audio media setup failed: %s", exc)
+
+        def _maybe_start_recording(self, call_audio, mic_audio) -> None:
+            """Wire both directions to an AudioMediaRecorder. Called
+            once per call from onCallMediaState after the audio path is
+            up; subsequent media events are ignored."""
+            if not self.record_to or self._recorder_started:
+                return
+            import os as _os
+            _os.makedirs(_os.path.dirname(self.record_to), exist_ok=True)
+            try:
+                rec = pj.AudioMediaRecorder()
+                rec.createRecorder(self.record_to)
+                call_audio.startTransmit(rec)   # remote voice
+                mic_audio.startTransmit(rec)    # our voice
+                self._recorder = rec
+                self._recorder_started = True
+                logger.info("recording started: %s", self.record_to)
+            except Exception:
+                logger.exception("recorder start failed")
+                self._recorder = None
+
+        def stop_recording(self) -> Optional[str]:
+            """Close the WAV recorder. Returns the WAV path, or None if
+            nothing was being recorded. Caller (the endpoint) handles
+            mp3 conversion off the worker thread."""
+            if self._recorder is None:
+                return None
+            try:
+                self._recorder.delete()
+            except Exception:
+                logger.exception("recorder delete failed")
+            self._recorder = None
+            return self.record_to
 
         # --------------------------------------------------------------
         # Helpers

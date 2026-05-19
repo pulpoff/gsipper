@@ -46,8 +46,17 @@ class AccountSettings:
 
 
 @dataclass
+class GeneralSettings:
+    """App-level preferences edited from Window > Settings."""
+    start_minimized: bool = False   # do_activate skips window.present()
+    run_on_start: bool = False      # write ~/.config/autostart/*.desktop
+    call_records: bool = False      # record every call to wav, convert to mp3
+
+
+@dataclass
 class Settings:
     account: AccountSettings = field(default_factory=AccountSettings)
+    general: GeneralSettings = field(default_factory=GeneralSettings)
 
 
 def _dataclass_from_dict(cls, data: dict):
@@ -85,12 +94,16 @@ def load_settings() -> Settings:
     account = _dataclass_from_dict(AccountSettings, account_data)
     if raw_codecs is not None:
         account.codecs = _sanitize_codecs(raw_codecs)
-    return Settings(account=account)
+    general = _dataclass_from_dict(GeneralSettings, dict(data.get("general", {})))
+    return Settings(account=account, general=general)
 
 
 def save_settings(settings: Settings) -> None:
     os.makedirs(_CONFIG_DIR, exist_ok=True)
     tmp = _CONFIG_PATH + ".tmp"
     with open(tmp, "w") as f:
-        json.dump({"account": asdict(settings.account)}, f, indent=2)
+        json.dump({
+            "account": asdict(settings.account),
+            "general": asdict(settings.general),
+        }, f, indent=2)
     os.replace(tmp, _CONFIG_PATH)

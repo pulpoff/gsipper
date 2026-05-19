@@ -154,13 +154,31 @@ class CallsView(Gtk.Box):
     def _redial_target(self, record: CallRecord) -> str:
         return record.peer_uri or record.peer or ""
 
+    def _open_player(self, path: str) -> None:
+        from ..dialogs.playback_dialog import PlaybackDialog
+        PlaybackDialog(parent=self.get_root(), path=path).present()
+
     def _build_row(self, record: CallRecord):
+        import os
+        has_recording = bool(record.recording_path) and \
+                        os.path.exists(record.recording_path)
+
         if _USE_ADW:
             row = Adw.ActionRow(
                 title=record.peer or "(unknown)",
                 subtitle=_row_subtitle(record),
             )
             row.add_prefix(_direction_icon(record))
+            if has_recording:
+                play_btn = Gtk.Button.new_from_icon_name(
+                    "media-playback-start-symbolic")
+                play_btn.add_css_class("flat")
+                play_btn.set_valign(Gtk.Align.CENTER)
+                play_btn.set_tooltip_text("Play recording")
+                play_btn.connect(
+                    "clicked",
+                    lambda *_, p=record.recording_path: self._open_player(p))
+                row.add_suffix(play_btn)
             target = self._redial_target(record)
             if target:
                 row.set_activatable(True)

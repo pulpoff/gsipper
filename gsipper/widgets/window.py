@@ -150,6 +150,7 @@ class MainWindow(_BaseWindow):
     def _install_actions(self, app) -> None:
         for name, handler in {
             "account": self._action_account,
+            "settings": self._action_settings,
             "log": self._action_log,
             "about": self._action_about,
             "quit": self._action_quit,
@@ -164,6 +165,7 @@ class MainWindow(_BaseWindow):
 
         account_section = Gio.Menu()
         account_section.append("Account…", "win.account")
+        account_section.append("Settings…", "win.settings")
         menu.append_section(None, account_section)
 
         tools_section = Gio.Menu()
@@ -192,6 +194,17 @@ class MainWindow(_BaseWindow):
             self._toast("Log viewer requires libadwaita")
             return
         LogDialog(parent=self).present()
+
+    def _action_settings(self, *_args) -> None:
+        if not _USE_ADW:
+            self._toast("Settings dialog requires libadwaita")
+            return
+        from ..dialogs.settings_dialog import SettingsDialog
+        SettingsDialog(self._settings, on_save=self._on_general_saved).present(self)
+
+    def _on_general_saved(self, general) -> None:
+        self._settings.general = general
+        save_settings(self._settings)
 
     def _on_account_saved(self, _account) -> None:
         save_settings(self._settings)

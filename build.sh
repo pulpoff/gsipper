@@ -31,6 +31,10 @@ APT_PACKAGES=(
     gir1.2-gsound-1.0                      # ringtone playback
     gir1.2-ayatanaappindicator3-0.1        # tray status icon (optional)
     sound-theme-freedesktop                # provides phone-incoming-call
+    ffmpeg                                 # WAV -> MP3 for call records
+    gir1.2-gstreamer-1.0                   # playback of recorded calls
+    gir1.2-gst-plugins-base-1.0            # playbin element
+    gstreamer1.0-plugins-good              # MP3 decoder, etc.
 )
 
 # Build deps for compiling pjproject + Python bindings from source
