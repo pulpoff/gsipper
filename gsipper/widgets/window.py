@@ -291,10 +291,10 @@ class MainWindow(_BaseWindow):
             return
         uri = self._build_dial_uri(number)
         logger.info("dial: %s -> %s", number, uri)
-        call = self._sip.make_call(uri)
-        if call is None:
-            self._toast("Could not place call (account not registered?)")
-            return
+        # Fire-and-forget — the SIP worker thread will dispatch and call
+        # state will arrive via _on_call_state. Show the in-call view
+        # optimistically so the user sees instant feedback.
+        self._sip.make_call(uri)
         self.dialer.show_call(peer=number, state="calling")
         if _USE_ADW and hasattr(self, "_stack"):
             self._stack.set_visible_child_name("dialer")
@@ -329,9 +329,9 @@ class MainWindow(_BaseWindow):
 
     def _on_messages_send(self, _view, peer_uri: str, body: str, message_id: str) -> None:
         if not self._sip.send_message(peer_uri, body, message_id=message_id):
-            # send_message returns False if pjsua2 rejected the call;
-            # mark it as failed in the chat view immediately.
-            self.messages.on_message_status(message_id, 500, "Send failed")
+            # pjsua2 entirely unavailable (not even queued); send_message
+            # returns False only in that case now. Mark immediately.
+            self.messages.on_message_status(message_id, 500, "SIP unavailable")
 
     def _on_messages_call(self, _view, peer_uri: str) -> None:
         # Re-use the existing dial path so we get the same URI rewriting
