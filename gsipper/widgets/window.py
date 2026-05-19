@@ -282,6 +282,7 @@ class MainWindow(_BaseWindow):
                     getattr(call, "peer_display", ""))
         if state == "ended":
             self.dialer.show_keypad()
+            self.calls.refresh()
             return
         peer = getattr(call, "peer_display", "") or "—"
         self.dialer.show_call(peer=peer, state=state)

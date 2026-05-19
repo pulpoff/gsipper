@@ -21,6 +21,11 @@
     background-color: #c01c28;   /* GNOME error red */
 }
 
+/* Call-history direction icons. */
+.call-outgoing { color: #3584e4; }   /* GNOME blue = outgoing */
+.call-incoming { color: #2ec27e; }   /* GNOME green = incoming */
+.call-missed   { color: #c01c28; }   /* GNOME red = missed */
+
 .dialer-number {
     font-size: 20pt;
     padding: 8px 12px;

@@ -336,8 +336,10 @@ class SipEndpoint:
     # ------------------------------------------------------------------
 
     def _on_call_state_internal(self, call, state: str) -> bool:
-        if state == "ended" and call is self._active_call:
-            self._active_call = None
+        if state == "ended":
+            self._record_history(call)
+            if call is self._active_call:
+                self._active_call = None
         if self._call_state_handler is not None:
             try:
                 self._call_state_handler(call, state)
@@ -345,6 +347,44 @@ class SipEndpoint:
                 import traceback
                 traceback.print_exc()
         return False  # GLib.idle_add: do not repeat
+
+    @staticmethod
+    def _record_history(call) -> None:
+        from datetime import datetime
+
+        from ..storage.history import CallRecord, append_call
+
+        direction = "incoming" if getattr(call, "incoming", False) else "outgoing"
+        connected_at = getattr(call, "connected_at", None)
+        started_at = getattr(call, "started_at", 0.0)
+        ended_at = getattr(call, "ended_at", None) or 0.0
+        duration = int(ended_at - connected_at) if connected_at else 0
+        if duration < 0:
+            duration = 0
+        if connected_at:
+            status = "completed"
+        elif direction == "incoming":
+            # Step 4 will distinguish missed vs declined here; for now
+            # we auto-reject everything, so call it "declined".
+            status = "declined"
+        else:
+            status = "failed"
+        record = CallRecord(
+            direction=direction,
+            peer=getattr(call, "peer_display", "") or getattr(call, "peer_uri", ""),
+            peer_uri=getattr(call, "peer_uri", ""),
+            started_at=datetime.fromtimestamp(started_at).isoformat(timespec="seconds"),
+            duration_seconds=duration,
+            status=status,
+            status_code=int(getattr(call, "last_status_code", 0)),
+            status_reason=str(getattr(call, "last_status_text", "")),
+        )
+        try:
+            append_call(record)
+            logger.info("history: recorded %s call peer=%s dur=%ds status=%s",
+                        direction, record.peer, duration, status)
+        except Exception as exc:
+            logger.error("history: failed to append: %s", exc)
 
     def _on_incoming_call_internal(self, account, call_id: int) -> None:
         """Incoming call landed. Step 4 will add the ring-in popup; for
