@@ -267,15 +267,11 @@ class MainWindow(_BaseWindow):
         dot.set_tooltip_text(tooltip or state.capitalize())
 
     def _on_window_close(self, *_args) -> bool:
-        try:
-            self._sip.hangup_active()
-        except Exception:
-            pass
-        try:
-            self._sip.shutdown()
-        except Exception:
-            pass
-        return False
+        """X button: hide to tray. SIP keeps running so we still ring on
+        incoming calls. Real quit goes through win.quit / Ctrl+Q / the
+        tray-extension menu, which call app.quit() → do_shutdown."""
+        self.set_visible(False)
+        return True  # inhibit destroy
 
     # ------------------------------------------------------------------
     # Outgoing calls
