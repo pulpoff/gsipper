@@ -27,7 +27,11 @@ except Exception as _exc:  # ImportError, but also catches loader errors
     HAVE_PJSUA2 = False
     PJSUA2_IMPORT_ERROR = f"{type(_exc).__name__}: {_exc}"
 
+from .. import __version__
 from ..storage.settings import AccountSettings
+
+if False:  # type-check only
+    from .call import SipCall
 
 
 logger = logging.getLogger(__name__)
@@ -40,9 +44,10 @@ RegStateHandler = Callable[[bool, int, str], None]
 if HAVE_PJSUA2:
 
     class _Account(pj.Account):
-        def __init__(self, on_reg_state: RegStateHandler):
+        def __init__(self, on_reg_state: RegStateHandler, on_incoming) -> None:
             super().__init__()
             self._on_reg_state = on_reg_state
+            self._on_incoming = on_incoming
 
         def onRegState(self, prm):  # noqa: N802 (pjsua2 naming)
             try:
@@ -55,6 +60,14 @@ if HAVE_PJSUA2:
             logger.info("registration state: active=%s code=%s reason=%s",
                         active, code, reason)
             GLib.idle_add(self._on_reg_state, active, code, reason)
+
+        def onIncomingCall(self, prm):  # noqa: N802
+            try:
+                call_id = int(prm.callId)
+            except Exception:
+                logger.error("onIncomingCall: missing callId")
+                return
+            self._on_incoming(self, call_id)
 
 
     class _PjLogBridge(pj.LogWriter):
@@ -91,6 +104,8 @@ class SipEndpoint:
         self._enabled_codecs: List[str] = []
         self._unavailable_codecs: List[str] = []
         self._reg_handler: Optional[RegStateHandler] = None
+        self._call_state_handler = None  # type: Optional[Callable]
+        self._active_call = None  # type: Optional["SipCall"]
         self._pj_log_bridge = None  # must outlive the endpoint
         if not HAVE_PJSUA2:
             logger.error(
@@ -123,6 +138,46 @@ class SipEndpoint:
     def set_reg_handler(self, handler: RegStateHandler) -> None:
         self._reg_handler = handler
 
+    def set_call_state_handler(self, handler) -> None:
+        """handler(call: SipCall, state: str) — called on GTK main thread."""
+        self._call_state_handler = handler
+
+    @property
+    def active_call(self):
+        return self._active_call
+
+    def make_call(self, uri: str):
+        """Place an outgoing call. Returns the SipCall, or None on failure."""
+        if not HAVE_PJSUA2 or self._account is None:
+            logger.error("make_call: no registered account")
+            return None
+        if self._active_call is not None:
+            logger.warning("make_call: another call is active; ignoring")
+            return None
+        from .call import SipCall
+        logger.info("make_call: %s", uri)
+        try:
+            call = SipCall(self._account, self._on_call_state_internal)
+            call.peer_uri = uri
+            call.peer_display = uri
+            op = pj.CallOpParam(True)
+            call.makeCall(uri, op)
+        except Exception as exc:
+            logger.error("make_call failed: %s", exc)
+            return None
+        self._active_call = call
+        return call
+
+    def hangup_active(self, status_code: int = 0) -> None:
+        if self._active_call is None:
+            return
+        self._active_call.safe_hangup(status_code)
+
+    def answer_active(self) -> None:
+        if self._active_call is None:
+            return
+        self._active_call.safe_answer(200)
+
     def configure_account(self, settings: AccountSettings) -> None:
         """Start the endpoint if needed and (re)register the account."""
         if not HAVE_PJSUA2:
@@ -145,7 +200,10 @@ class SipEndpoint:
                     and settings.username and settings.password):
                 self._notify_reg(False, 0, "Not configured")
                 return
-            self._account = _Account(self._on_reg_state_internal)
+            self._account = _Account(
+                self._on_reg_state_internal,
+                self._on_incoming_call_internal,
+            )
             acfg = self._build_account_config(settings)
             self._account.create(acfg)
 
@@ -180,7 +238,7 @@ class SipEndpoint:
             ep_cfg.logConfig.writer = self._pj_log_bridge
         except Exception as exc:
             logger.warning("could not install pjsua2 log writer: %s", exc)
-        ep_cfg.uaConfig.userAgent = "gsipper/0.1"
+        ep_cfg.uaConfig.userAgent = f"gsipper {__version__}"
         if stun_server:
             ep_cfg.uaConfig.stunServer.append(stun_server)
         ep.libInit(ep_cfg)
@@ -272,3 +330,30 @@ class SipEndpoint:
             except Exception:
                 import traceback
                 traceback.print_exc()
+
+    # ------------------------------------------------------------------
+    # Calls
+    # ------------------------------------------------------------------
+
+    def _on_call_state_internal(self, call, state: str) -> bool:
+        if state == "ended" and call is self._active_call:
+            self._active_call = None
+        if self._call_state_handler is not None:
+            try:
+                self._call_state_handler(call, state)
+            except Exception:
+                import traceback
+                traceback.print_exc()
+        return False  # GLib.idle_add: do not repeat
+
+    def _on_incoming_call_internal(self, account, call_id: int) -> None:
+        """Incoming call landed. Step 4 will add the ring-in popup; for
+        now we auto-reject with 486 Busy so the dialler stays usable."""
+        from .call import SipCall
+        try:
+            call = SipCall(account, self._on_call_state_internal,
+                           call_id=call_id, incoming=True)
+            logger.info("incoming call (auto-rejecting until step 4)")
+            call.safe_hangup(486)
+        except Exception as exc:
+            logger.error("incoming call handling failed: %s", exc)

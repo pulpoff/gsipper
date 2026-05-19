@@ -81,8 +81,14 @@ class MainWindow(_BaseWindow):
 
         # Tiny coloured dot: green = online, yellow = connecting,
         # red = offline / error. Real text goes in the tooltip.
-        self._status_dot = Gtk.Box()
-        self._status_dot.set_valign(Gtk.Align.CENTER)
+        # Both alignments must be CENTER so the headerbar doesn't
+        # stretch the box vertically into an oval.
+        self._status_dot = Gtk.Box(
+            halign=Gtk.Align.CENTER,
+            valign=Gtk.Align.CENTER,
+            hexpand=False,
+            vexpand=False,
+        )
         self._status_dot.set_size_request(12, 12)
         self._status_dot.add_css_class("status-dot")
         self._status_dot.add_css_class("offline")
