@@ -302,15 +302,30 @@ class MainWindow(_BaseWindow):
     def _on_hangup_requested(self, *_args) -> None:
         self._sip.hangup_active()
 
+    def _dialer_friendly(self, target: str) -> str:
+        """Strip 'sip:' / '@domain' off a target so what lands in the
+        dialer entry is human-editable digits (or the user-part). The
+        real SIP URI is rebuilt against the registered account at dial
+        time by _build_dial_uri."""
+        s = (target or "").strip()
+        for scheme in ("sip:", "sips:", "tel:"):
+            if s.startswith(scheme):
+                s = s[len(scheme):]
+                break
+        if "@" in s:
+            s = s.split("@", 1)[0]
+        return s or target
+
     def _on_contact_call(self, _view, target: str) -> None:
         """ContactsView.call-requested: route through the dialer flow."""
-        self.dialer.set_number(target)
-        self._on_dial_requested(self.dialer, target)
+        number = self._dialer_friendly(target)
+        self.dialer.set_number(number)
+        self._on_dial_requested(self.dialer, number)
 
     def _on_redial_requested(self, _view, target: str) -> None:
         """Calls history row activated: pre-fill the dialer and switch
         to the Dialer tab so the user can review and press Call."""
-        self.dialer.set_number(target)
+        self.dialer.set_number(self._dialer_friendly(target))
         if _USE_ADW and hasattr(self, "_stack"):
             self._stack.set_visible_child_name("dialer")
 
@@ -335,9 +350,11 @@ class MainWindow(_BaseWindow):
 
     def _on_messages_call(self, _view, peer_uri: str) -> None:
         # Re-use the existing dial path so we get the same URI rewriting
-        # ('+' -> '00') and the in-call view swap.
-        self.dialer.set_number(peer_uri)
-        self._on_dial_requested(self.dialer, peer_uri)
+        # ('+' -> '00') and the in-call view swap. Show the number only
+        # (no 'sip:.../@host') in the dialer so the user can edit it.
+        number = self._dialer_friendly(peer_uri)
+        self.dialer.set_number(number)
+        self._on_dial_requested(self.dialer, number)
 
     def _lookup_contact_display(self, peer_uri: str) -> str:
         """Best-effort: look up a stored contact whose SIP URI or phone
