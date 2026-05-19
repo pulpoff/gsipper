@@ -120,6 +120,10 @@ class MainWindow(_BaseWindow):
 
     def _build_adw_layout(self, menu_model: Gio.MenuModel) -> None:
         header = Adw.HeaderBar()
+        # Drop the maximize/fullscreen affordance from window controls.
+        # The window is a tall, narrow dialer pane; full-screening it
+        # never makes sense. Resize-by-drag is still allowed.
+        header.set_decoration_layout(":minimize,close")
 
         menu_button = Gtk.MenuButton(icon_name="open-menu-symbolic")
         menu_button.set_menu_model(menu_model)
