@@ -10,7 +10,7 @@
 # Usage:
 #   ./build.sh           # install deps + build pjsua2 if missing, then run
 #   ./build.sh --deps    # install runtime + build deps, don't launch
-#   ./build.sh --pjsua2  # only (re)build pjsua2
+#   ./build.sh --pjsua2  # FORCE-rebuild pjsua2 (wipes ~/.local + cache)
 #   ./build.sh --run     # only launch, skip dep checks
 #   ./build.sh --deb     # build dist/gsipper_<version>_<arch>.deb
 
@@ -98,9 +98,22 @@ build_pjsip() {
     # Compile pjproject and its Python (SWIG) bindings.
     # Bindings install into the user site-packages, so no sudo needed
     # for the final step. The static pjproject .a archives stay in the
-    # cache; we only re-run if pjsua2 is not importable.
-    if "$PYTHON" -c "import pjsua2" >/dev/null 2>&1; then
+    # cache; we only re-run if pjsua2 is not importable, OR if the
+    # caller passes 'force' as the first arg ('./build.sh --pjsua2').
+    local force="${1:-}"
+    if [ "$force" != "force" ] \
+            && "$PYTHON" -c "import pjsua2" >/dev/null 2>&1; then
         return
+    fi
+
+    # On a forced rebuild drop the previously-installed user-site
+    # bindings + the pjproject build tree so the new PJ_VERSION,
+    # bcg729 / opus link flags, etc. actually take effect.
+    if [ "$force" = "force" ]; then
+        echo "==> forcing pjsua2 rebuild: clearing user-site + ~/.cache/gsipper"
+        rm -f "$HOME"/.local/lib/python3*/site-packages/pjsua2.py \
+              "$HOME"/.local/lib/python3*/site-packages/_pjsua2*.so 2>/dev/null || true
+        rm -rf "$HOME/.cache/gsipper/pjproject-"*
     fi
 
     if ! command -v apt-get >/dev/null 2>&1; then
@@ -201,7 +214,7 @@ case "${1:-}" in
         install_deps
         ;;
     --pjsua2)
-        build_pjsip
+        build_pjsip force
         ;;
     --deb)
         exec "$SCRIPT_DIR/packaging/build-deb.sh"
