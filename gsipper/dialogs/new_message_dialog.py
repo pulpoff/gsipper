@@ -8,6 +8,7 @@ conversation.
 
 from __future__ import annotations
 
+import logging
 from typing import Callable
 
 import gi
@@ -15,6 +16,9 @@ import gi
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 from gi.repository import Adw, Gtk  # noqa: E402
+
+
+logger = logging.getLogger(__name__)
 
 
 class NewMessageDialog(Adw.Window):
@@ -81,6 +85,5 @@ class NewMessageDialog(Adw.Window):
         try:
             self._on_send(peer, msg_body)
         except Exception:
-            import traceback
-            traceback.print_exc()
+            logger.exception("new-message on_send raised")
         self.close()

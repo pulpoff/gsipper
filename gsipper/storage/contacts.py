@@ -121,7 +121,3 @@ def merge_imported(existing: List[Contact], imported: Iterable[Contact]) -> int:
         existing.append(c)
         added += 1
     return added
-
-
-def get_contacts_path() -> str:
-    return _CONTACTS_PATH

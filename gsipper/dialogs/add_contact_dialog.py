@@ -8,6 +8,7 @@ edited as a single primary here.
 
 from __future__ import annotations
 
+import logging
 from typing import Callable, Optional
 
 import gi
@@ -17,6 +18,9 @@ gi.require_version("Adw", "1")
 from gi.repository import Adw, Gtk  # noqa: E402
 
 from ..storage.contacts import Contact, new_id
+
+
+logger = logging.getLogger(__name__)
 
 
 class AddContactDialog(Adw.PreferencesWindow):
@@ -84,6 +88,5 @@ class AddContactDialog(Adw.PreferencesWindow):
             try:
                 self._on_save(c)
             except Exception:
-                import traceback
-                traceback.print_exc()
+                logger.exception("contact on_save raised")
         return False

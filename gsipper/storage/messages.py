@@ -153,7 +153,3 @@ def find_conversation(convos: List[Conversation], peer_uri: str) -> Optional[Con
         if normalise_uri(c.peer_uri) == key:
             return c
     return None
-
-
-def get_messages_path() -> str:
-    return _MESSAGES_PATH

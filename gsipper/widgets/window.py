@@ -193,10 +193,6 @@ class MainWindow(_BaseWindow):
             return
         LogDialog(parent=self).present()
 
-    def _action_settings(self, *_args) -> None:
-        # TODO step 8: Adw.PreferencesWindow with audio / codecs / network
-        self._toast("Settings: coming in step 8")
-
     def _on_account_saved(self, _account) -> None:
         save_settings(self._settings)
         self._apply_account_settings()

@@ -3,8 +3,6 @@
 Shown inside the Dialer tab while a call is active. Displays the peer,
 state and call duration; a big red hangup button at the bottom ends
 the call.
-
-Future steps will add mute / hold / transfer / DTMF rows.
 """
 
 from __future__ import annotations

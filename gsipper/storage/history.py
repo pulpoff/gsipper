@@ -80,7 +80,3 @@ def append_call(record: CallRecord) -> List[CallRecord]:
     records.insert(0, record)
     save_history(records)
     return records
-
-
-def get_history_path() -> str:
-    return _HISTORY_PATH

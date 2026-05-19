@@ -505,8 +505,7 @@ class SipEndpoint:
             try:
                 self._reg_handler(active, code, reason)
             except Exception:
-                import traceback
-                traceback.print_exc()
+                logger.exception("handler raised")
 
     # ------------------------------------------------------------------
     # Calls
@@ -526,8 +525,7 @@ class SipEndpoint:
             try:
                 self._call_state_handler(call, state)
             except Exception:
-                import traceback
-                traceback.print_exc()
+                logger.exception("handler raised")
         return False  # GLib.idle_add: do not repeat
 
     def _reap_call(self, call) -> bool:
@@ -584,8 +582,7 @@ class SipEndpoint:
             try:
                 self._message_handler(from_uri, body, content_type)
             except Exception:
-                import traceback
-                traceback.print_exc()
+                logger.exception("handler raised")
         return False
 
     def _on_instant_message_status_internal(self, message_id: str, code: int, reason: str) -> bool:
@@ -593,8 +590,7 @@ class SipEndpoint:
             try:
                 self._message_status_handler(message_id, code, reason)
             except Exception:
-                import traceback
-                traceback.print_exc()
+                logger.exception("handler raised")
         return False
 
     def _on_incoming_call_internal(self, account, call_id: int) -> None:
