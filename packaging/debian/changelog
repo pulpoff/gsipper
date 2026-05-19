@@ -1,3 +1,20 @@
+gsipper (1.2.4-1) unstable; urgency=medium
+
+  * Fix pjlib SIGABRT when opening Account > Advanced. 1.2.3 added
+    SipEndpoint.available_codec_ids(), which called pjsua2's
+    codecEnum2() from the GTK main thread when the dialog opened.
+    pjlib only allows calls from threads it knows about (the one
+    that ran libCreate, plus its own internal workers), so the GTK
+    thread tripped the 'Calling pjlib from unknown/external
+    thread' assertion and the process aborted right after
+    REGISTER succeeded.
+    The codec list is now snapshotted on the SIP worker thread
+    right after ep.libStart() (it's a stable list — codecs don't
+    appear or disappear at runtime), and available_codec_ids()
+    just returns the cached copy. No more pjlib traffic from GTK.
+
+ -- pulpoff <noreply@pulpoff.com>  Tue, 19 May 2026 00:00:00 +0000
+
 gsipper (1.2.3-1) unstable; urgency=medium
 
   * libbcg729-0 is now a Recommends, not a Depends — gsipper no

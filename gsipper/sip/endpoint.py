@@ -222,6 +222,7 @@ class SipEndpoint:
         self._lock = threading.Lock()
         self._started = False
         self._enabled_codecs: List[str] = []
+        self._available_codec_ids: List[str] = []
         self._unavailable_codecs: List[str] = []
         self._reg_handler: Optional[RegStateHandler] = None
         self._call_state_handler = None  # type: Optional[Callable]
@@ -261,13 +262,13 @@ class SipEndpoint:
     def available_codec_ids(self) -> List[str]:
         """Codec IDs reported by pjsua2.Endpoint.codecEnum2() — the
         ones that are ACTUALLY built into the .so and can be enabled.
-        Empty if pjsua2 is not loaded or hasn't been started yet."""
-        if not HAVE_PJSUA2 or self._ep is None:
-            return []
-        try:
-            return [c.codecId for c in self._ep.codecEnum2()]
-        except Exception:
-            return []
+        Empty if pjsua2 is not loaded or hasn't been started yet.
+
+        Returns the cached list populated on the worker thread once
+        libStart completes; calling codecEnum2() from the GTK main
+        thread would trip pj_thread_this' 'unknown/external thread'
+        assertion and SIGABRT the process."""
+        return list(self._available_codec_ids)
 
     def set_reg_handler(self, handler: RegStateHandler) -> None:
         self._reg_handler = handler
@@ -510,6 +511,17 @@ class SipEndpoint:
         self._ep = ep
         self._started = True
         logger.info("pjsua2 endpoint started")
+
+        # Snapshot the codec list on the worker thread (which IS
+        # registered with pjlib because it called libCreate). The GTK
+        # main thread later reads this via available_codec_ids() to
+        # gray out unsupported entries in Account > Advanced > Codecs.
+        try:
+            self._available_codec_ids = [c.codecId for c in ep.codecEnum2()]
+            logger.info("available codecs: %s", self._available_codec_ids)
+        except Exception:
+            logger.exception("codecEnum2() failed")
+            self._available_codec_ids = []
 
     def _configure_codecs(self, codec_settings: list) -> None:
         """Apply the user's codec list to pjsua2.
