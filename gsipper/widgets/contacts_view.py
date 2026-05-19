@@ -395,8 +395,11 @@ class ContactsView(Gtk.Box):
                 break
         else:
             self._contacts.append(contact)
-        contacts_store.save_contacts(self._contacts)
-        self._rebuild_rows()
+        # Defer the rebuild + JSON write past the AddContactDialog's
+        # close animation so the user doesn't watch the contacts
+        # listbox stutter while the dialog is still going away.
+        GLib.idle_add(self._rebuild_rows)
+        GLib.idle_add(self._persist_contacts_idle)
 
     def _open_import_picker(self) -> None:
         dialog = Gtk.FileDialog()

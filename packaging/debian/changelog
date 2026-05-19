@@ -1,3 +1,52 @@
+gsipper (1.3.0-1) unstable; urgency=medium
+
+  Final-release polish pass. Audit-driven cleanups + the focused
+  CPU / UI-responsiveness items the audit surfaced.
+
+  Real bug
+  --------
+    * SipEndpoint._dispose_via_worker had ~6 lines of unreachable
+      code after the 'return False  # one-shot' — leftover from
+      the call-state-handler merge. Deleted.
+
+  Lower idle / in-call CPU
+  ------------------------
+    * pjsua2 endpoint log level lowered from 4 (DEBUG) to 3
+      (INFO) — PJSIP no longer emits hundreds of per-packet
+      lines per second across SWIG into our log bridge.
+    * _PjLogBridge.write now short-circuits on level >= 5 BEFORE
+      str()ing the entry, so the few TRACE messages that do
+      sneak through don't cost an allocation + idle_add hop.
+    * PlaybackDialog tick interval 250 ms -> 500 ms. 2 Hz is
+      plenty for the elapsed-time label + slider, halves the
+      CPU during MP3 playback.
+
+  Snappier UI
+  -----------
+    * _ChatPage gains append_message(); the two callers
+      (_on_chat_send and on_incoming_message) use it instead of
+      refresh_messages() so a single new bubble doesn't rebuild
+      every prior bubble in the conversation. refresh_messages
+      stays for the open-page and status-flip paths.
+    * MainWindow._lookup_contact_display caches results on
+      self._contact_lookup_cache. Bursts of incoming SIP MESSAGEs
+      from the same peer no longer reload contacts.json + scan
+      every contact's phone digits per message.
+    * ContactsView._on_contact_saved schedules the row-rebuild
+      and the JSON write via GLib.idle_add so the
+      AddContactDialog finishes its close animation before any
+      list churn — matches the delete path landed in 1.1.1.
+
+  Mechanical cleanup
+  ------------------
+    * Lifted 'import os' (calls_view) and 'import logging' (app)
+      from inside functions up to module-top imports.
+    * Refreshed the default_codecs() docstring; the old wording
+      referenced retired G.729 / libbcg729 lore that 1.2.6 made
+      obsolete.
+
+ -- pulpoff <noreply@pulpoff.com>  Tue, 19 May 2026 00:00:00 +0000
+
 gsipper (1.2.6-1) unstable; urgency=medium
 
   * Drop G.729 / G.726 / G.723.1 from the codec set. Account >

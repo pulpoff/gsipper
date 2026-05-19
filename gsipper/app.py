@@ -8,6 +8,7 @@ unavailable.
 
 from __future__ import annotations
 
+import logging
 import os
 import sys
 from typing import List
@@ -127,7 +128,6 @@ class GsipperApp(_BaseApp):
             sip.hangup_active()
             sip.shutdown()
         except Exception:
-            import logging
             logging.getLogger(__name__).exception("SIP shutdown raised")
         _BaseApp.do_shutdown(self)
 
