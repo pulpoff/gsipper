@@ -1,8 +1,18 @@
 """PJSUA2 Endpoint singleton.
 
 Owns the SIP transport, codec configuration and the active account.
-All PJSIP callbacks marshal back to the GTK main loop via GLib.idle_add
-so the rest of the app can pretend SIP is single-threaded.
+
+Threading model
+---------------
+A single dedicated worker thread (_SipWorker) owns every pjsua2 call
+we initiate — libCreate / libInit / libStart, account.create,
+call.makeCall, call.hangup, account.sendInstantMessage, etc. Public
+methods on SipEndpoint enqueue a closure into the worker so the GTK
+main loop never blocks on PJSIP. PJSIP's own internal worker threads
+fire onCallState / onRegState / onInstantMessage from yet other
+threads; those callbacks already marshal back to the GTK main loop
+via GLib.idle_add, so the rest of the app can pretend SIP is
+single-threaded.
 
 The default codec list (G.711a/u, G.722, G.726) lives in
 gsipper.storage.settings.default_codecs and is editable per-account via
@@ -13,6 +23,7 @@ priorities (highest = first row).
 from __future__ import annotations
 
 import logging
+import queue
 import threading
 from typing import Callable, List, Optional
 
@@ -39,6 +50,38 @@ pj_logger = logging.getLogger("gsipper.pjsua2")
 
 
 RegStateHandler = Callable[[bool, int, str], None]
+
+
+class _SipWorker(threading.Thread):
+    """One thread that owns every pjsua2 API call we initiate.
+
+    All public methods of SipEndpoint enqueue closures here. PJSIP's
+    internal worker threads (which fire onCallState etc.) are NOT this
+    thread — they're created by libStart and fire callbacks from
+    inside the C library; those callbacks must marshal back to the
+    GTK main loop themselves.
+    """
+
+    def __init__(self) -> None:
+        super().__init__(daemon=True, name="gsipper-sip-worker")
+        self._queue: "queue.Queue" = queue.Queue()
+
+    def submit(self, fn: Callable, *args, **kwargs) -> None:
+        self._queue.put((fn, args, kwargs))
+
+    def stop(self) -> None:
+        self._queue.put(None)
+
+    def run(self) -> None:
+        while True:
+            item = self._queue.get()
+            if item is None:
+                return
+            fn, args, kwargs = item
+            try:
+                fn(*args, **kwargs)
+            except Exception:
+                logger.exception("sip worker: %s failed", getattr(fn, "__name__", fn))
 
 
 if HAVE_PJSUA2:
@@ -144,6 +187,7 @@ class SipEndpoint:
         self._message_handler = None  # type: Optional[Callable]
         self._message_status_handler = None  # type: Optional[Callable]
         self._active_call = None  # type: Optional["SipCall"]
+        self._worker: Optional[_SipWorker] = None
         # PJSUA2's Python wrapper releases the underlying pj_call as
         # soon as the last Python reference goes away. Setting
         # _active_call=None at the 'ended' state can therefore trigger
@@ -197,11 +241,144 @@ class SipEndpoint:
         """handler(message_id: str, status_code: int, reason: str) — GTK thread."""
         self._message_status_handler = handler
 
+    @property
+    def active_call(self):
+        return self._active_call
+
+    # ------------------------------------------------------------------
+    # Public API (each method ENQUEUES onto the worker thread so the
+    # GTK main loop never blocks on a pjsua2 call.)
+    # ------------------------------------------------------------------
+
+    def configure_account(self, settings: AccountSettings) -> None:
+        if not HAVE_PJSUA2:
+            logger.error("configure_account: pjsua2 missing (%s)",
+                         PJSUA2_IMPORT_ERROR or "unknown")
+            # Surface immediately so the UI shows Offline + tooltip
+            # without waiting for the worker.
+            self._notify_reg(False, 0, "python3-pjsua2 not installed")
+            return
+        self._ensure_worker()
+        self._worker.submit(self._do_configure_account, settings)
+
+    def shutdown(self) -> None:
+        if self._worker is None:
+            return
+        self._worker.submit(self._do_shutdown)
+        self._worker.stop()
+        self._worker.join(timeout=5)
+        self._worker = None
+
+    def make_call(self, uri: str) -> None:
+        if not HAVE_PJSUA2:
+            logger.error("make_call: pjsua2 missing")
+            return
+        self._ensure_worker()
+        self._worker.submit(self._do_make_call, uri)
+
+    def hangup_active(self, status_code: int = 0) -> None:
+        if self._worker is None:
+            return
+        # Snapshot the active call now so a later worker tick still
+        # has something to operate on even if state changes.
+        call = self._active_call
+        if call is None:
+            return
+        self._worker.submit(call.safe_hangup, status_code)
+
+    def answer_active(self) -> None:
+        if self._worker is None:
+            return
+        call = self._active_call
+        if call is None:
+            return
+        self._worker.submit(call.safe_answer, 200)
+
     def send_message(self, to_uri: str, body: str, message_id: str = "") -> bool:
-        """Send a SIP MESSAGE. Returns True on submit (not delivery)."""
-        if not HAVE_PJSUA2 or self._account is None:
-            logger.error("send_message: no registered account")
+        """Enqueue a SIP MESSAGE. Returns False only if pjsua2 is missing
+        — actual delivery success/failure flows through the status
+        handler. Always returns True if the request was queued."""
+        if not HAVE_PJSUA2:
             return False
+        self._ensure_worker()
+        self._worker.submit(self._do_send_message, to_uri, body, message_id)
+        return True
+
+    # ------------------------------------------------------------------
+    # Worker-side implementations (run on _SipWorker; never on GTK)
+    # ------------------------------------------------------------------
+
+    def _ensure_worker(self) -> None:
+        if self._worker is None:
+            self._worker = _SipWorker()
+            self._worker.start()
+
+    def _do_configure_account(self, settings: AccountSettings) -> None:
+        logger.info(
+            "configure_account: server=%s user=%s transport=%s stun=%s enabled=%s",
+            settings.server, settings.username, settings.transport,
+            settings.stun_server or "-", settings.enabled,
+        )
+        with self._lock:
+            try:
+                self._ensure_started(settings.transport, settings.stun_server)
+                self._configure_codecs(settings.codecs)
+                self._teardown_account_locked()
+                if not (settings.enabled and settings.server
+                        and settings.username and settings.password):
+                    self._notify_reg(False, 0, "Not configured")
+                    return
+                self._account = _Account(
+                    self._on_reg_state_internal,
+                    self._on_incoming_call_internal,
+                    self._on_instant_message_internal,
+                    self._on_instant_message_status_internal,
+                )
+                acfg = self._build_account_config(settings)
+                self._account.create(acfg)
+            except Exception as exc:
+                logger.error("configure_account failed: %s", exc, exc_info=True)
+                self._notify_reg(False, 0, f"Init failed: {exc}")
+
+    def _do_shutdown(self) -> None:
+        with self._lock:
+            self._teardown_account_locked()
+            self._call_graveyard.clear()
+            if self._ep is not None:
+                try:
+                    self._ep.libDestroy()
+                except Exception:
+                    pass
+                self._ep = None
+                self._started = False
+
+    def _do_make_call(self, uri: str) -> None:
+        from .call import SipCall
+        if self._account is None:
+            logger.error("make_call: no registered account")
+            return
+        if self._active_call is not None:
+            logger.warning("make_call: another call is active; ignoring")
+            return
+        logger.info("make_call: %s", uri)
+        try:
+            call = SipCall(self._account, self._on_call_state_internal)
+            call.peer_uri = uri
+            call.peer_display = uri
+            op = pj.CallOpParam(True)
+            call.makeCall(uri, op)
+        except Exception as exc:
+            logger.error("make_call failed: %s", exc, exc_info=True)
+            return
+        self._active_call = call
+
+    def _do_send_message(self, to_uri: str, body: str, message_id: str) -> None:
+        if self._account is None:
+            logger.error("send_message: no registered account")
+            if message_id and self._message_status_handler is not None:
+                GLib.idle_add(self._on_instant_message_status_internal,
+                              message_id, 500, "Not registered")
+            return
         try:
             prm = pj.SendInstantMessageParam()
             prm.toUri = to_uri
@@ -212,90 +389,11 @@ class SipEndpoint:
             self._account.sendInstantMessage(prm)
             logger.info("MESSAGE submitted to %s (id=%s, %d chars)",
                         to_uri, message_id or "-", len(body))
-            return True
         except Exception as exc:
             logger.error("send_message failed: %s", exc, exc_info=True)
-            return False
-
-    @property
-    def active_call(self):
-        return self._active_call
-
-    def make_call(self, uri: str):
-        """Place an outgoing call. Returns the SipCall, or None on failure."""
-        if not HAVE_PJSUA2 or self._account is None:
-            logger.error("make_call: no registered account")
-            return None
-        if self._active_call is not None:
-            logger.warning("make_call: another call is active; ignoring")
-            return None
-        from .call import SipCall
-        logger.info("make_call: %s", uri)
-        try:
-            call = SipCall(self._account, self._on_call_state_internal)
-            call.peer_uri = uri
-            call.peer_display = uri
-            op = pj.CallOpParam(True)
-            call.makeCall(uri, op)
-        except Exception as exc:
-            logger.error("make_call failed: %s", exc)
-            return None
-        self._active_call = call
-        return call
-
-    def hangup_active(self, status_code: int = 0) -> None:
-        if self._active_call is None:
-            return
-        self._active_call.safe_hangup(status_code)
-
-    def answer_active(self) -> None:
-        if self._active_call is None:
-            return
-        self._active_call.safe_answer(200)
-
-    def configure_account(self, settings: AccountSettings) -> None:
-        """Start the endpoint if needed and (re)register the account."""
-        if not HAVE_PJSUA2:
-            logger.error("configure_account: pjsua2 missing (%s)",
-                         PJSUA2_IMPORT_ERROR or "unknown")
-            raise RuntimeError(
-                "python3-pjsua2 is not installed. "
-                "Run `sudo apt install python3-pjsua2`."
-            )
-        logger.info(
-            "configure_account: server=%s user=%s transport=%s stun=%s enabled=%s",
-            settings.server, settings.username, settings.transport,
-            settings.stun_server or "-", settings.enabled,
-        )
-        with self._lock:
-            self._ensure_started(settings.transport, settings.stun_server)
-            self._configure_codecs(settings.codecs)
-            self._teardown_account_locked()
-            if not (settings.enabled and settings.server
-                    and settings.username and settings.password):
-                self._notify_reg(False, 0, "Not configured")
-                return
-            self._account = _Account(
-                self._on_reg_state_internal,
-                self._on_incoming_call_internal,
-                self._on_instant_message_internal,
-                self._on_instant_message_status_internal,
-            )
-            acfg = self._build_account_config(settings)
-            self._account.create(acfg)
-
-    def shutdown(self) -> None:
-        with self._lock:
-            self._teardown_account_locked()
-            # Drop graveyard references; pjsua2 is going down anyway.
-            self._call_graveyard.clear()
-            if self._ep is not None:
-                try:
-                    self._ep.libDestroy()
-                except Exception:
-                    pass
-                self._ep = None
-                self._started = False
+            if message_id and self._message_status_handler is not None:
+                GLib.idle_add(self._on_instant_message_status_internal,
+                              message_id, 500, str(exc))
 
     # ------------------------------------------------------------------
     # Internals
