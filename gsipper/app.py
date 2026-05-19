@@ -139,9 +139,24 @@ class GsipperApp(_BaseApp):
                 tel_uri = arg
                 break
 
+        # Track whether this is the first activation. HANDLES_COMMAND_LINE
+        # routes BOTH the initial launch and any re-launch (e.g. user
+        # clicking the app-grid icon again) through this hook, so the
+        # 'Start minimized' setting only applies the first time. Later
+        # invocations are explicit user requests to bring the window
+        # back, so they always present.
+        first_launch = self._window is None
         window = self._ensure_window()
         if tel_uri:
             window.handle_call_uri(tel_uri)
+
+        if first_launch and not tel_uri:
+            from .storage.settings import load_settings
+            if load_settings().general.start_minimized:
+                # Window stays hidden — SIP registers in the background,
+                # the tray icon + GNOME-Shell extension are the only UI.
+                return 0
+
         window.present()
         return 0
 
