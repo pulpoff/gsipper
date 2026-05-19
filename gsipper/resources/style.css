@@ -1,0 +1,30 @@
+/* gsipper — brand palette derived from the Font Awesome phone app icon.
+   Primary  : rgb(47, 30, 80)
+   Secondary: rgba(47, 30, 80, 0.4) */
+
+.dialer-number {
+    font-size: 20pt;
+    padding: 8px 12px;
+}
+
+.dialer-key {
+    min-width: 80px;
+    min-height: 56px;
+    border-radius: 12px;
+}
+
+.dialer-key:hover {
+    background-color: rgba(47, 30, 80, 0.10);
+}
+
+.dialer-call {
+    background-color: #4cd964;
+    color: white;
+    border-radius: 24px;
+}
+
+.dialer-end {
+    background-color: #ff3b30;
+    color: white;
+    border-radius: 24px;
+}
