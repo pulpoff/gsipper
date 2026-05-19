@@ -173,13 +173,29 @@ if HAVE_PJSUA2:
         # --------------------------------------------------------------
 
         def safe_hangup(self, status_code: int = 0) -> None:
+            # Log the pjsua2-side state so we can tell, after the fact,
+            # whether the call was really CONFIRMED (BYE), EARLY
+            # (CANCEL), or already DISCONNECTED (no-op) when the user
+            # tapped End.
+            pre_state = "?"
+            try:
+                info = self.getInfo()
+                pre_state = f"{info.stateText} ({int(info.state)})"
+            except Exception:
+                pass
+            logger.info("hangup() requested: pjsua2_state=%s status_code=%s",
+                        pre_state, status_code or "default")
             try:
                 op = pj.CallOpParam()
                 if status_code:
                     op.statusCode = status_code
+                # statusCode=0 lets pjsua2 pick the right verb for the
+                # state: BYE for CONFIRMED, CANCEL for EARLY, 487 for
+                # incoming-not-yet-answered, etc.
                 self.hangup(op)
+                logger.info("hangup() submitted to pjsua2")
             except Exception as exc:
-                logger.error("hangup failed: %s", exc)
+                logger.error("hangup failed: %s", exc, exc_info=True)
 
         def safe_answer(self, status_code: int = 200) -> None:
             try:
