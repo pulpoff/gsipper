@@ -24,7 +24,7 @@ try:
 except (ValueError, ImportError):
     pass
 
-from gi.repository import GLib, GObject, Gtk  # noqa: E402
+from gi.repository import GLib, GObject, Gtk, Pango  # noqa: E402
 
 from ..storage import messages as msg_store
 from ..storage.messages import Conversation, Message, new_id, normalise_uri
@@ -105,6 +105,7 @@ class _ChatPage(Adw.NavigationPage if _USE_ADW else Gtk.Box):
     __gsignals__ = {
         "send-message": (GObject.SignalFlags.RUN_FIRST, None, (str, str)),
         "call-peer":    (GObject.SignalFlags.RUN_FIRST, None, (str,)),
+        "go-back":      (GObject.SignalFlags.RUN_FIRST, None, ()),
     }
 
     def __init__(self, conversation: Conversation) -> None:
@@ -117,17 +118,39 @@ class _ChatPage(Adw.NavigationPage if _USE_ADW else Gtk.Box):
 
         body = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
 
+        # Inline top toolbar — back, peer name, call button. We deliberately
+        # do NOT use Adw.HeaderBar here: this view is embedded as a tab of
+        # MainWindow's Adw.ViewStack, which already lives under the window's
+        # HeaderBar; a second one would duplicate the title + close/min/max
+        # window controls.
+        top = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6,
+                      margin_top=6, margin_bottom=6,
+                      margin_start=8, margin_end=8)
+        back_btn = Gtk.Button(icon_name="go-previous-symbolic",
+                              tooltip_text="Back to conversations")
+        back_btn.add_css_class("flat")
+        back_btn.connect("clicked", lambda *_: self.emit("go-back"))
+        top.append(back_btn)
+
+        title_label = Gtk.Label(
+            label=conversation.peer_display or conversation.peer_uri,
+            xalign=0.0, hexpand=True,
+        )
+        title_label.add_css_class("heading")
+        title_label.set_ellipsize(Pango.EllipsizeMode.END)
+        top.append(title_label)
+
+        call_btn = Gtk.Button(icon_name="call-start-symbolic",
+                              tooltip_text="Call this contact")
+        call_btn.add_css_class("flat")
+        call_btn.connect("clicked", lambda *_: self.emit("call-peer",
+                                                         self._conversation.peer_uri))
+        top.append(call_btn)
+        body.append(top)
+        body.append(Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL))
+
         if _USE_ADW:
-            header = Adw.HeaderBar()
-            call_btn = Gtk.Button(icon_name="call-start-symbolic",
-                                  tooltip_text="Call this contact")
-            call_btn.connect("clicked", lambda *_: self.emit("call-peer",
-                                                             self._conversation.peer_uri))
-            header.pack_end(call_btn)
-            toolbar = Adw.ToolbarView()
-            toolbar.add_top_bar(header)
-            toolbar.set_content(body)
-            self.set_child(toolbar)
+            self.set_child(body)
         else:
             self.append(body)
 
@@ -210,20 +233,23 @@ class _ListPage(Adw.NavigationPage if _USE_ADW else Gtk.Box):
 
         body = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
 
+        # Inline action row in the page body — see _ChatPage for why we
+        # don't use Adw.HeaderBar here.
+        action_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL,
+                             margin_top=6, margin_bottom=6,
+                             margin_start=8, margin_end=8)
+        new_btn = Gtk.Button(icon_name="document-edit-symbolic",
+                             tooltip_text="New conversation")
+        new_btn.add_css_class("flat")
+        new_btn.set_halign(Gtk.Align.END)
+        new_btn.set_hexpand(True)
+        new_btn.connect("clicked", lambda *_: self.emit("new-conversation"))
+        action_row.append(new_btn)
+        body.append(action_row)
+
         if _USE_ADW:
-            header = Adw.HeaderBar()
-            new_btn = Gtk.Button(icon_name="document-edit-symbolic",
-                                 tooltip_text="New conversation")
-            new_btn.connect("clicked", lambda *_: self.emit("new-conversation"))
-            header.pack_end(new_btn)
-            toolbar = Adw.ToolbarView()
-            toolbar.add_top_bar(header)
-            toolbar.set_content(body)
-            self.set_child(toolbar)
+            self.set_child(body)
         else:
-            new_btn = Gtk.Button(label="New conversation")
-            new_btn.connect("clicked", lambda *_: self.emit("new-conversation"))
-            self.append(new_btn)
             self.append(body)
 
         self._stack = Gtk.Stack()
@@ -470,6 +496,7 @@ class MessagesView(Gtk.Box):
         page = _ChatPage(convo)
         page.connect("send-message", self._on_chat_send)
         page.connect("call-peer", self._on_chat_call_peer)
+        page.connect("go-back", self._on_chat_go_back)
         self._open_chat_page = page
 
         if self._nav is not None:
@@ -497,6 +524,12 @@ class MessagesView(Gtk.Box):
 
     def _on_chat_call_peer(self, _src, peer_uri: str) -> None:
         self.emit("call-peer", peer_uri)
+
+    def _on_chat_go_back(self, _src) -> None:
+        if self._nav is not None:
+            self._nav.pop()
+        self._open_uri = None
+        self._open_chat_page = None
 
     # --------------------------------------------------------------
     # Helpers

@@ -15,6 +15,7 @@ the parent persists once the main dialog closes.
 
 from __future__ import annotations
 
+import logging
 from typing import Callable, List, Optional
 
 import gi
@@ -24,6 +25,9 @@ gi.require_version("Adw", "1")
 from gi.repository import Adw, Gtk  # noqa: E402
 
 from ..storage.settings import AccountSettings
+
+
+logger = logging.getLogger(__name__)
 
 
 _TRANSPORTS = ["UDP", "TCP", "TLS"]
@@ -148,8 +152,7 @@ class AccountDialog(Adw.PreferencesWindow):
         try:
             self._on_save(self._account)
         except Exception:
-            import traceback
-            traceback.print_exc()
+            logger.exception("account on_save raised")
         return False
 
 

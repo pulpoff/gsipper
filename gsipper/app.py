@@ -1,8 +1,9 @@
 """GTK4 + libadwaita application entry point for gsipper.
 
-Mirrors midiplayer's Adw.Application bootstrap: single-instance app with
-HANDLES_COMMAND_LINE, native GNOME theme integration via libadwaita,
-fallback to plain Gtk.Application when libadwaita is unavailable.
+Single-instance Adw.Application with HANDLES_COMMAND_LINE so a second
+launch (typically via 'gsipper sip:...') is forwarded to the first
+process. Falls back to a plain Gtk.Application when libadwaita is
+unavailable.
 """
 
 from __future__ import annotations

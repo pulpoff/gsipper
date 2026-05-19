@@ -8,6 +8,66 @@ A modern GTK4 + libadwaita SIP client for the GNOME desktop, modelled on
 the workflow of [MicroSIP](https://www.microsip.org/) but built from the
 ground up with native GNOME widgets and PJSIP's PJSUA2 Python bindings.
 
+<p align="center">
+  <img src="gsipper.png" alt="gsipper screenshot" width="360">
+</p>
+
+## Features
+
+**Calling**
+
+- Outgoing calls from the dialer keypad, from a contact, or by clicking a
+  row in the call history.
+- Incoming-call popup window (Ringin) with answer / decline, plus a GNOME
+  notification and a `sound-theme-freedesktop` ringtone.
+- In-call status pane with peer, call state and live duration; one-tap
+  hangup.
+- E.164 dial-plan tweak: leading `+` is rewritten to `00` at dial time so
+  Google-style contacts route through the trunk's international access
+  prefix.
+
+**Contacts**
+
+- Per-contact list with search, multi-number entries (mobile / work /
+  home / …) and per-number Call menu items.
+- Edit and Delete from the row menu, with a confirmation dialog on
+  Delete.
+- Import from vCard (`.vcf`) or Google CSV.
+- Click-to-call straight from a contact row.
+
+**Call history**
+
+- Outgoing / incoming / missed entries with a coloured direction icon
+  and human-relative timestamps.
+- Tap a row to drop the number back into the dialer for redial.
+
+**Messaging (SIP IM)**
+
+- Conversation list (newest first, unread badge on rows) and a chat view
+  with incoming / outgoing bubbles, delivery status and a compose entry.
+- New conversation dialog: pick a SIP URI / number and type the first
+  message in one go.
+- Per-contact name resolution on incoming messages — when the peer URI
+  matches a stored contact, its display name is used.
+
+**Account & registration**
+
+- Adw.PreferencesDialog account editor (Basic + Advanced) with
+  server / username / password, transport (UDP / TCP / TLS), STUN, codec
+  priority list and a few NAT / keep-alive knobs.
+- Status dot in the window header bar — green online, yellow connecting,
+  red offline; tooltip carries the SIP reason text.
+
+**Desktop integration**
+
+- App-grid entry, `tel:` / `sip:` / `sips:` URI handler, hicolor icon.
+- AyatanaAppIndicator tray icon (when available) mirroring the status
+  dot.
+- GNOME Shell status-bar extension (`gsipper@pulpoff.com`) for shells
+  45-48, talking to the app over D-Bus.
+- All PJSIP calls run on a dedicated worker thread so the GTK main loop
+  never blocks on registration, INVITE/BYE, or `MESSAGE`.
+
 ## Run from source
 
 ```sh
@@ -58,15 +118,3 @@ After install, enable the status-bar extension once:
 gnome-extensions enable gsipper@pulpoff.com
 # X11: Alt+F2, type 'r', Enter   |   Wayland: log out and back in
 ```
-
-## Roadmap
-
-1. Skeleton + packaging
-2. SIP engine (PJSUA2) + Account dialog
-3. Dialer + outgoing call + active-call view
-4. Incoming call popup (Ringin) + ringtone
-5. Call history
-6. Contacts (CRUD, search, click-to-call)
-7. Messages (SIP IM)
-8. Settings (audio devices, codecs, STUN, recording, shortcuts, AA/DND/forwarding)
-9. Polish (tray icon, notifications, .deb packaging) ← *you are here*
