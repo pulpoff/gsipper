@@ -507,7 +507,13 @@ class SipEndpoint:
             ep_cfg.logConfig.writer = self._pj_log_bridge
         except Exception as exc:
             logger.warning("could not install pjsua2 log writer: %s", exc)
-        ep_cfg.uaConfig.userAgent = f"gsipper {__version__}"
+        # 'name/version' is the RFC 3261 product-token form. The
+        # space-separated form some servers' admin UIs use to derive a
+        # 'Device' name picks the first token before whitespace, so
+        # 'gsipper 1.3.x' would show up as just 'gsipper'. The slash
+        # keeps the whole token together — matches what FRITZ!OS,
+        # MicroSIP, PJSUA, etc. send.
+        ep_cfg.uaConfig.userAgent = f"gsipper/{__version__}"
         if stun_server:
             ep_cfg.uaConfig.stunServer.append(stun_server)
         ep.libInit(ep_cfg)
