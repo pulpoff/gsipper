@@ -554,7 +554,18 @@ class MainWindow(_BaseWindow):
 
     def _lookup_contact_display(self, peer_uri: str) -> str:
         """Best-effort: look up a stored contact whose SIP URI or phone
-        matches `peer_uri`, return its display name. Falls back to ''."""
+        matches `peer_uri`, return its display name. Falls back to ''.
+
+        Results are cached on self._contact_lookup_cache so that bursts
+        of incoming SIP MESSAGEs from the same peer don't each pay the
+        contacts.json read + per-contact digit-extraction cost on the
+        GTK main thread. The cache is wiped whenever a contact is
+        saved or deleted via the Contacts tab."""
+        if not hasattr(self, "_contact_lookup_cache"):
+            self._contact_lookup_cache: dict[str, str] = {}
+        cache = self._contact_lookup_cache
+        if peer_uri in cache:
+            return cache[peer_uri]
         try:
             from ..storage.contacts import load_contacts
             from ..storage.messages import normalise_uri
@@ -563,13 +574,17 @@ class MainWindow(_BaseWindow):
             digits = "".join(ch for ch in user_part if ch.isdigit())
             for c in load_contacts():
                 if c.sip_uri and normalise_uri(c.sip_uri) == canonical:
+                    cache[peer_uri] = c.name
                     return c.name
                 for phone in c.phones:
-                    num_digits = "".join(ch for ch in phone.get("number", "") if ch.isdigit())
+                    num_digits = "".join(
+                        ch for ch in phone.get("number", "") if ch.isdigit())
                     if digits and num_digits and digits == num_digits:
+                        cache[peer_uri] = c.name
                         return c.name
         except Exception:
             pass
+        cache[peer_uri] = ""
         return ""
 
     def _on_call_state(self, call, state: str) -> None:

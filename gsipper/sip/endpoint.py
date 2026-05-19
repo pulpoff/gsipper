@@ -195,8 +195,18 @@ if HAVE_PJSUA2:
 
         def write(self, entry):  # noqa: N802 (pjsua2 naming)
             try:
-                msg = str(getattr(entry, "msg", "") or "").rstrip()
                 level = int(getattr(entry, "level", 3))
+            except Exception:
+                return
+            # Drop pjsua2 TRACE / verbose logs (level >= 5) BEFORE we
+            # stringify — during a call PJSIP emits hundreds of these
+            # per second (per-packet, per-timer), and just building
+            # the str() and dispatching idle_add hooks would burn
+            # measurable CPU on the GTK loop.
+            if level >= 5:
+                return
+            try:
+                msg = str(getattr(entry, "msg", "") or "").rstrip()
             except Exception:
                 return
             if not msg:
@@ -486,7 +496,11 @@ class SipEndpoint:
         ep.libCreate()
 
         ep_cfg = pj.EpConfig()
-        ep_cfg.logConfig.level = 4
+        # level 3 = INFO. The previous default (4 = DEBUG) made PJSIP
+        # emit hundreds of lines per second during an active call,
+        # all of which crossed SWIG into our log bridge — visible CPU
+        # cost for messages that just got dropped at logger.debug().
+        ep_cfg.logConfig.level = 3
         ep_cfg.logConfig.consoleLevel = 0  # avoid double-printing on stderr
         try:
             self._pj_log_bridge = _PjLogBridge()
@@ -659,14 +673,10 @@ class SipEndpoint:
         worker thread. When the closure exits on the worker, those
         refs drop and the SWIG destructors run on a registered
         thread."""
+        # The lambda's default args keep call + recorder alive until
+        # it runs on the worker; the lambda body itself is a no-op.
         self._worker.submit(lambda c=call, r=recorder: None)
         return False  # one-shot
-        if self._call_state_handler is not None:
-            try:
-                self._call_state_handler(call, state)
-            except Exception:
-                logger.exception("handler raised")
-        return False  # GLib.idle_add: do not repeat
 
     @staticmethod
     def _record_history(call, recording_path: str = "") -> None:

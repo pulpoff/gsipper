@@ -135,7 +135,9 @@ class PlaybackDialog(Adw.Window):
             return
         self._playbin.set_state(state)
         if state == Gst.State.PLAYING and self._tick_id == 0:
-            self._tick_id = GLib.timeout_add(250, self._tick)
+            # 2 Hz is fine for the elapsed-time label + slider; faster
+            # ticks were burning CPU without a visible UX gain.
+            self._tick_id = GLib.timeout_add(500, self._tick)
 
     def _stop(self) -> None:
         if self._playbin is not None:

@@ -7,6 +7,7 @@ direction icon coloured via CSS (.call-outgoing = blue, .call-incoming
 
 from __future__ import annotations
 
+import os
 from datetime import datetime
 from typing import List
 
@@ -159,7 +160,6 @@ class CallsView(Gtk.Box):
         PlaybackDialog(parent=self.get_root(), path=path).present()
 
     def _build_row(self, record: CallRecord):
-        import os
         has_recording = bool(record.recording_path) and \
                         os.path.exists(record.recording_path)
 

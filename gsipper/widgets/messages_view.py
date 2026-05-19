@@ -190,6 +190,10 @@ class _ChatPage(Adw.NavigationPage if _USE_ADW else Gtk.Box):
         return self._conversation
 
     def refresh_messages(self) -> None:
+        """Full rebuild — only used when opening the page or when a
+        message's delivery status changes (so a Bubble has to be
+        replaced). For new arrivals call append_message() instead, it
+        avoids the O(n) clear + recreate."""
         child = self._transcript.get_first_child()
         while child is not None:
             nxt = child.get_next_sibling()
@@ -197,6 +201,13 @@ class _ChatPage(Adw.NavigationPage if _USE_ADW else Gtk.Box):
             child = nxt
         for msg in self._conversation.messages:
             self._transcript.append(_Bubble(msg))
+        GLib.idle_add(self._scroll_to_end)
+
+    def append_message(self, message: Message) -> None:
+        """Add a single new bubble at the end. Called from
+        MessagesView whenever the conversation gains one incoming or
+        outgoing message — avoids rebuilding every existing bubble."""
+        self._transcript.append(_Bubble(message))
         GLib.idle_add(self._scroll_to_end)
 
     def _scroll_to_end(self) -> bool:
@@ -404,7 +415,8 @@ class MessagesView(Gtk.Box):
         self._refresh_list()
         if self._open_chat_page is not None and \
                 normalise_uri(self._open_chat_page.conversation.peer_uri) == canonical:
-            self._open_chat_page.refresh_messages()
+            # Append-only — full rebuild was O(n) per message.
+            self._open_chat_page.append_message(msg)
 
     def on_message_status(self, message_id: str, code: int, reason: str) -> None:
         peer_uri = self._pending_send_ids.pop(message_id, None)
@@ -519,7 +531,9 @@ class MessagesView(Gtk.Box):
         self._pending_send_ids[msg.id] = convo.peer_uri
         self._refresh_list()
         if self._open_chat_page is not None:
-            self._open_chat_page.refresh_messages()
+            # Append-only — the chat is already showing the prior
+            # bubbles, no need to recreate them.
+            self._open_chat_page.append_message(msg)
         self.emit("send-message", convo.peer_uri, body, msg.id)
 
     def _on_chat_call_peer(self, _src, peer_uri: str) -> None:

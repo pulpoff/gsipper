@@ -14,9 +14,8 @@ def default_codecs() -> List[dict]:
     Each entry has an `id` (pjsua2 codec prefix), a human `name`, and an
     `enabled` flag. Add new families here and they'll show up in the
     Advanced > Codecs list automatically. Codecs that aren't actually
-    available in the running pjsua2 build (e.g. G.729 without libbcg729
-    at build time) are silently skipped and listed in the Advanced
-    'unavailable' tooltip.
+    built into pjsua2 (e.g. Opus without libopus at build time) are
+    grayed out in the Advanced dialog and skipped at REGISTER time.
     """
     return [
         {"id": "opus/48000",   "name": "Opus",                "enabled": True},
