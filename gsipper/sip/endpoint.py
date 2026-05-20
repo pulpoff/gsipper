@@ -657,6 +657,14 @@ class SipEndpoint:
             self._record_history(call, recording_path=mp3_path or "")
             if call is self._active_call:
                 self._active_call = None
+                # Detach the audio devices once no call is active —
+                # PJSUA keeps the system capture device (mic) open
+                # for the lifetime of the endpoint by default, which
+                # leaves the GNOME 'mic in use' indicator stuck on
+                # after every call. setNullDev() routes audio to a
+                # null sink; the next call's onCallMediaState will
+                # restore the real devices.
+                self._worker.submit(self._do_release_sound_dev)
             # Hold both refs for 5 s so PJSIP can finish BYE / 200 OK /
             # TXN cleanup, then hand them to the worker thread which
             # lets the local closure vars go out of scope on a
@@ -683,6 +691,35 @@ class SipEndpoint:
         # it runs on the worker; the lambda body itself is a no-op.
         self._worker.submit(lambda c=call, r=recorder: None)
         return False  # one-shot
+
+    def _do_release_sound_dev(self) -> None:
+        """Detach the real capture / playback devices and route audio
+        to a pjmedia null device. Frees the OS mic handle (and the
+        speaker handle), so the GNOME 'microphone in use' top-bar
+        indicator turns off between calls. Runs on the SIP worker
+        thread because pjsua2 calls must come from a pjlib-registered
+        thread."""
+        if self._ep is None:
+            return
+        try:
+            self._ep.audDevManager().setNullDev()
+            logger.info("audio devices released (setNullDev)")
+        except Exception:
+            logger.exception("setNullDev failed")
+
+    def _do_acquire_sound_dev(self) -> None:
+        """Reverse of _do_release_sound_dev. Restores the user's
+        default capture + playback devices so a new call has audio.
+        setSndDev with -1, -1 = system defaults (per the pjsua2
+        SndDevId.PJMEDIA_AUD_DEFAULT_CAPTURE_DEV / PLAYBACK_DEV
+        sentinels)."""
+        if self._ep is None:
+            return
+        try:
+            self._ep.audDevManager().setSndDev(-1, -1)
+            logger.info("audio devices acquired (system defaults)")
+        except Exception:
+            logger.exception("setSndDev failed")
 
     @staticmethod
     def _record_history(call, recording_path: str = "") -> None:
@@ -760,12 +797,28 @@ class SipEndpoint:
             tmp.peer_display = _short_peer(peer_uri) or peer_uri
             tmp.record_to = _build_record_path(tmp.peer_display or "incoming")
             call = tmp
-            logger.info("incoming call from %s", call.peer_display or "?")
-            # Reject second concurrent call with 486 Busy.
+            logger.info("incoming call from %s (active=%s)",
+                        call.peer_display or "?",
+                        getattr(self._active_call, "state", None)
+                        if self._active_call is not None else "-")
+            # Reject second concurrent call with 486 Busy — but ONLY
+            # if the previously-tracked call is genuinely still in
+            # progress. A stale reference (state=='ended' but the
+            # GTK-thread idle_add that clears _active_call hasn't
+            # run yet, or some destructor path skipped the clear)
+            # used to make every subsequent incoming bounce with
+            # 486 + no popup, which is what the user is seeing.
+            from .call import STATE_ENDED
             if self._active_call is not None:
-                logger.info("already in a call; rejecting second incoming")
-                call.safe_hangup(486)
-                return
+                prev_state = getattr(self._active_call, "state", "")
+                if prev_state == STATE_ENDED:
+                    logger.warning("clearing stale _active_call (state=ended)")
+                    self._active_call = None
+                else:
+                    logger.info("already in a %s call; rejecting incoming",
+                                prev_state)
+                    call.safe_hangup(486)
+                    return
             # Send 180 Ringing.
             try:
                 op = pj.CallOpParam()
