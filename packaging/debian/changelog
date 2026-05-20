@@ -1,3 +1,20 @@
+gsipper (1.3.17-1) unstable; urgency=medium
+
+  * Extension: don't construct the PopupMenu at all. Previous
+    attempts overrode vfunc_event (1.3.7/1.3.14) and the
+    PopupMenu instance methods open/toggle (1.3.16), but
+    PanelMenu.Button's 'event' signal handler still found a way
+    to pop the menu on the user's GNOME. Switch to
+    super._init(0.0, 'gsipper', true) — the third arg
+    `dontCreateMenu` keeps this.menu null. The parent's _onEvent
+    guards with `if (this.menu)` so it never even tries to
+    toggle anything. A direct connect('button-press-event', ...)
+    on the indicator handles left-click and invokes Show() over
+    D-Bus.
+    extension/metadata.json version bumped 3 -> 4.
+
+ -- pulpoff <noreply@pulpoff.com>  Tue, 19 May 2026 00:00:00 +0000
+
 gsipper (1.3.16-1) unstable; urgency=medium
 
   * Extension: the 'left click on panel icon -> Show() instead of

@@ -43,7 +43,13 @@ const GsipperProxy = Gio.DBusProxy.makeProxyWrapper(STATUS_IFACE);
 const GsipperIndicator = GObject.registerClass(
 class GsipperIndicator extends PanelMenu.Button {
     _init() {
-        super._init(0.0, 'gsipper');
+        // The third arg to PanelMenu.Button._init is `dontCreateMenu`.
+        // When true, no PopupMenu is attached to `this.menu`; the
+        // parent's _onEvent guards with `if (this.menu)` and quietly
+        // does nothing on click. Combined with our own click handler
+        // below we get a clean single-click-runs-Show() behaviour
+        // with zero menu surface.
+        super._init(0.0, 'gsipper', true);
 
         this._icon = new St.Icon({
             icon_name: 'call-start-symbolic',
@@ -51,21 +57,29 @@ class GsipperIndicator extends PanelMenu.Button {
         });
         this.add_child(this._icon);
 
-        // Replace PanelMenu.Button's built-in 'open the popup menu'
-        // behaviour with a direct D-Bus Show() call. We override the
-        // PopupMenu instance methods rather than relying on
-        // vfunc_event alone — PanelMenu.Button connects its own
-        // 'event' handler in super._init, and signal-handler ordering
-        // across GObject reflection isn't guaranteed enough to trust
-        // vfunc_event will always intercept first. Overriding open()
-        // and toggle() turns the menu into a no-op trigger that runs
-        // our Show() handler instead of popping up.
-        this.menu.open = () => this._invoke('Show');
-        this.menu.toggle = () => this._invoke('Show');
+        // Belt-and-suspenders: a few downstream/forked Shells ignore
+        // dontCreateMenu. If `this.menu` somehow still exists, also
+        // turn its open/toggle into Show() — never a popup.
+        if (this.menu) {
+            this.menu.open = () => this._invoke('Show');
+            this.menu.toggle = () => this._invoke('Show');
+        }
 
-        // No popup menu — clicking the icon should directly bring
-        // the main window forward. The Status / MissedCalls tooltip
-        // and the IncomingCall notification remain.
+        // Direct click handler. button-press-event fires AFTER the
+        // parent's 'event' signal, but since the parent does nothing
+        // when this.menu is null, ours is the only thing responding
+        // to a left-click on the panel icon — and it goes straight
+        // to the D-Bus Show().
+        this.connect('button-press-event', (_actor, event) => {
+            if (!this._proxy)
+                return Clutter.EVENT_PROPAGATE;
+            const button = event.get_button?.() ?? 1;
+            if (button !== 1)
+                return Clutter.EVENT_PROPAGATE;
+            this._invoke('Show');
+            return Clutter.EVENT_STOP;
+        });
+
         this._proxy = null;
         this._propsChangedId = 0;
         this._signalSubId = 0;
@@ -80,22 +94,6 @@ class GsipperIndicator extends PanelMenu.Button {
             () => this._connect(),
             () => this._disconnect(),
         );
-    }
-
-    // Intercept the panel-button click before PanelMenu.Button's
-    // default open-the-menu handler runs. Single tap / left click
-    // calls Show(); right-click is left to GNOME's standard
-    // panel-button behaviour (currently a no-op since menu is empty).
-    vfunc_event(event) {
-        if (event.type() === Clutter.EventType.BUTTON_PRESS ||
-            event.type() === Clutter.EventType.TOUCH_BEGIN) {
-            const button = event.get_button?.() ?? 1;
-            if (button === 1) {
-                this._invoke('Show');
-                return Clutter.EVENT_STOP;
-            }
-        }
-        return Clutter.EVENT_PROPAGATE;
     }
 
     _connect() {
