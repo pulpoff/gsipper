@@ -1,3 +1,35 @@
+gsipper (1.3.21-1) unstable; urgency=medium
+
+  * Inline Accept button for incoming calls. From the user's
+    screenshot: the call was ringing in the InCallView but only
+    the red 'End' button was shown — no way to answer. The
+    InCallView's button row now contains a hidden green 'Answer'
+    button alongside the red one; the red button's label flips
+    between 'Decline' (incoming + ringing) and 'End' (everything
+    else) via a new set_call_kind(incoming) flag. The Answer
+    button only shows for incoming + state in (incoming, ringing),
+    and emits 'answer-requested' which DialerView re-emits up to
+    MainWindow, where it routes to SipEndpoint.answer_active() —
+    the same path the RinginWindow popup uses.
+  * The 'incoming' state now also switches the Dialer view to the
+    in-call layout immediately. The user sees Accept/Decline
+    inline regardless of whether the floating ring-in popup
+    appears on their setup.
+  * Bug fix: ring-in popup was being torn down + the ringer was
+    being silenced the moment our 180 Ringing went out (state
+    transition incoming -> ringing). The branch:
+      if call.incoming and state in ("ringing", "connected"):
+          _close_ringin(); _ringer.stop(); _withdraw_notification()
+    interpreted 'ringing' as 'we answered'. Now the cleanup only
+    runs on state == 'connected'.
+  * Ringer + notification dispatch moved to the top of
+    _open_ringin so they fire even when the floating popup itself
+    fails to construct (hidden window, WM weirdness). The popup
+    creation is also wrapped in try/except so the inline view
+    isn't taken down with it.
+
+ -- pulpoff <noreply@pulpoff.com>  Tue, 20 May 2026 00:00:00 +0000
+
 gsipper (1.3.20-1) unstable; urgency=medium
 
   * 1.3.19's transient_for fix wasn't enough — incoming calls

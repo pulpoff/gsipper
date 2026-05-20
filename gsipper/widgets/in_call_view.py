@@ -38,6 +38,10 @@ def _format_duration(seconds: int) -> str:
 class InCallView(Gtk.Box):
     __gsignals__ = {
         "hangup-requested": (GObject.SignalFlags.RUN_FIRST, None, ()),
+        # Emitted when the user taps the green Accept button on an
+        # incoming-ringing call. Wired by MainWindow to SipEndpoint
+        # .answer_active(), same path the RinginWindow popup uses.
+        "answer-requested": (GObject.SignalFlags.RUN_FIRST, None, ()),
     }
 
     def __init__(self) -> None:
@@ -67,19 +71,38 @@ class InCallView(Gtk.Box):
         spacer.set_vexpand(True)
         self.append(spacer)
 
-        hangup_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL,
-                             halign=Gtk.Align.CENTER, spacing=12)
+        # Single button row that hosts either:
+        #   - [Decline] [Answer]  for incoming-ringing calls
+        #   - [End]               for everything else
+        # set_call_kind() flips between layouts; we always show ONE
+        # row so the in-call pane never resizes mid-call.
+        btn_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL,
+                          halign=Gtk.Align.CENTER, spacing=24)
+
         self._hangup_btn = Gtk.Button(label="End")
         self._hangup_btn.set_icon_name("call-stop-symbolic")
         self._hangup_btn.add_css_class("destructive-action")
         self._hangup_btn.add_css_class("pill")
-        self._hangup_btn.set_size_request(180, 56)
+        self._hangup_btn.set_size_request(150, 56)
         self._hangup_btn.connect("clicked",
                                  lambda *_: self.emit("hangup-requested"))
-        hangup_row.append(self._hangup_btn)
-        self.append(hangup_row)
+        btn_row.append(self._hangup_btn)
+
+        self._answer_btn = Gtk.Button(label="Answer")
+        self._answer_btn.set_icon_name("call-start-symbolic")
+        self._answer_btn.add_css_class("suggested-action")
+        self._answer_btn.add_css_class("pill")
+        self._answer_btn.set_size_request(150, 56)
+        self._answer_btn.connect("clicked",
+                                 lambda *_: self.emit("answer-requested"))
+        # Hidden by default — only shown for incoming-ringing.
+        self._answer_btn.set_visible(False)
+        btn_row.append(self._answer_btn)
+
+        self.append(btn_row)
 
         self._state: str = "calling"
+        self._incoming: bool = False
         self._connected_at: Optional[float] = None
         self._timer_id: int = 0
 
@@ -98,14 +121,35 @@ class InCallView(Gtk.Box):
             self._start_timer()
         if state == "ended":
             self._stop_timer()
+        self._refresh_buttons()
+
+    def set_call_kind(self, incoming: bool) -> None:
+        """Tell the view whether this is an incoming call. Together
+        with the current state, this controls whether the Answer
+        button is shown (incoming + ringing/incoming = yes; everything
+        else = no, Answer hidden, End / Decline visible)."""
+        self._incoming = bool(incoming)
+        self._refresh_buttons()
+
+    def _refresh_buttons(self) -> None:
+        # Show the Answer button for an incoming call that hasn't been
+        # accepted yet (state is "incoming" or "ringing"). When the
+        # call connects or ends, hide Answer and revert the red button
+        # label back to "End".
+        is_incoming_ringing = (self._incoming
+                               and self._state in ("incoming", "ringing"))
+        self._answer_btn.set_visible(is_incoming_ringing)
+        self._hangup_btn.set_label("Decline" if is_incoming_ringing else "End")
 
     def reset(self) -> None:
         self._stop_timer()
         self._connected_at = None
         self._duration_label.set_text("")
         self._state = "calling"
+        self._incoming = False
         self._state_label.set_text("")
         self._peer_label.set_text("")
+        self._refresh_buttons()
 
     # ------------------------------------------------------------------
     # Duration timer

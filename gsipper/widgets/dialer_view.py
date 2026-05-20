@@ -37,6 +37,10 @@ class DialerView(Gtk.Box):
     __gsignals__ = {
         "call-requested": (GObject.SignalFlags.RUN_FIRST, None, (str,)),
         "hangup-requested": (GObject.SignalFlags.RUN_FIRST, None, ()),
+        # Re-emitted from the InCallView's Answer button (only shown
+        # for incoming-ringing calls). MainWindow connects it to
+        # SipEndpoint.answer_active().
+        "answer-requested": (GObject.SignalFlags.RUN_FIRST, None, ()),
     }
 
     def __init__(self) -> None:
@@ -87,6 +91,8 @@ class DialerView(Gtk.Box):
         self._in_call = InCallView()
         self._in_call.connect("hangup-requested",
                               lambda *_: self.emit("hangup-requested"))
+        self._in_call.connect("answer-requested",
+                              lambda *_: self.emit("answer-requested"))
         self._stack.add_named(self._in_call, "incall")
 
         self._stack.set_visible_child_name("keypad")
@@ -133,8 +139,10 @@ class DialerView(Gtk.Box):
     def set_number(self, number: str) -> None:
         self._entry.set_text(number)
 
-    def show_call(self, peer: str, state: str = "calling") -> None:
+    def show_call(self, peer: str, state: str = "calling",
+                  incoming: bool = False) -> None:
         self._in_call.set_peer(peer)
+        self._in_call.set_call_kind(incoming)
         self._in_call.set_state(state)
         self._stack.set_visible_child_name("incall")
 
