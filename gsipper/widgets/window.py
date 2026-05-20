@@ -676,7 +676,12 @@ class MainWindow(_BaseWindow):
 
         if state == "incoming":
             self._open_ringin(call)
-            self._emit_dbus_incoming(getattr(call, "peer_display", ""))
+            # IncomingCall D-Bus signal removed in 1.3.23: the
+            # previous extension version popped a plain
+            # 'Incoming call' toast on top of gsipper's actionable
+            # notification — exactly the duplicate the user wanted
+            # killed. gsipper's own Gio.Notification (with Answer /
+            # Decline buttons) is the only incoming alert now.
             # Also show the in-call view in the Dialer tab so the
             # user sees a big inline Answer / Decline pair even if
             # the floating ring-in popup isn't visible (hidden window,
@@ -723,23 +728,33 @@ class MainWindow(_BaseWindow):
     # ------------------------------------------------------------------
 
     def _open_ringin(self, call) -> None:
-        # The inline in-call view (DialerView + InCallView) is now the
-        # primary incoming-call UI — its [Answer] [Decline] buttons
-        # land in the same handlers the floating popup used to. We
-        # keep only the ringtone + GNOME notification here; the
-        # popup window was a duplicate alert per the user's report
-        # ('show only 1 interface not double').
+        # Two incoming-call surfaces, picked based on whether the
+        # MainWindow is currently visible:
+        #
+        #   - MainWindow visible: the inline InCallView inside the
+        #     Dialer tab is the primary UI (set by _on_call_state
+        #     state='incoming'). We do NOT force a window present()
+        #     here — the window is already in front of the user.
+        #     We DO fire the GNOME notification too so the user can
+        #     answer from there even if gsipper is behind another
+        #     app on a multi-tasked desktop.
+        #
+        #   - MainWindow hidden: skip the inline view (the user
+        #     can't see it anyway) and rely on the GNOME
+        #     notification's Answer / Decline action buttons. The
+        #     window stays hidden — clicking the notification's
+        #     'Answer' fires app.answer-incoming which routes
+        #     through to SipEndpoint.answer_active(); clicking the
+        #     body fires app.show-main which presents the window
+        #     for the user.
+        #
+        # Ringtone fires in both cases.
         peer_display = getattr(call, "peer_display", "") or "Unknown caller"
         try:
             self._ringer.start()
         except Exception:
             logger.exception("ringer start failed")
         self._send_incoming_notification(peer_display)
-        # Bring the MainWindow forward when it's hidden so the inline
-        # incoming view is visible. Without this, Start-minimized /
-        # Favorites-only users would see only the GNOME notification.
-        if not self.is_visible():
-            self.set_visible(True)
 
     def _close_ringin(self) -> None:
         win = self._ringin_window
