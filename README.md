@@ -68,7 +68,7 @@ PJSIP's PJSUA2 Python bindings.
   (mixed mic + remote), then converted to MP3 with `ffmpeg` on hangup.
 - Recordings live in `~/.local/share/gsipper/recordings/` as
   `YYYYMMDD-HHMMSS_<peer>.mp3`.
-- Rows in the Calls tab with a saved recording show a ▶ button. Clicking
+- Rows in the Recent tab with a saved recording show a ▶ button. Clicking
   it opens a modal player (GStreamer `playbin`) with a draggable
   timeline and play / pause / stop transport buttons.
 
@@ -132,7 +132,7 @@ python3 -m gsipper
 
 ```sh
 ./build.sh --deb
-sudo apt install ./dist/gsipper_1.3.5_amd64.deb
+sudo apt install ./dist/gsipper_1.3.6_amd64.deb
 sudo gsipper --install-pjsua2     # compile PJSUA2 bindings (one-time)
 ```
 

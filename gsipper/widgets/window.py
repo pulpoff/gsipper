@@ -72,8 +72,8 @@ class MainWindow(_BaseWindow):
         self._ringer = Ringer()
         self._ringin_window: RinginWindow | None = None
         self._incoming_notification_id = "gsipper-incoming"
-        # Count of missed calls since the user last visited the Calls tab.
-        # Reset by _on_view_switched / the Calls action.
+        # Count of missed calls since the user last visited the Recent tab.
+        # Reset by _on_view_switched when that page becomes visible.
         self._missed_calls: int = 0
 
         self._install_actions(app)
@@ -156,7 +156,7 @@ class MainWindow(_BaseWindow):
         stack = Adw.ViewStack()
         stack.add_titled_with_icon(self.dialer, "dialer", "Dialer", "input-dialpad-symbolic")
         stack.add_titled_with_icon(self.contacts, "contacts", "Contacts", "system-users-symbolic")
-        stack.add_titled_with_icon(self.calls, "calls", "Calls", "call-start-symbolic")
+        stack.add_titled_with_icon(self.calls, "calls", "Recent", "document-open-recent-symbolic")
         self._stack = stack
         self._apply_messages_visibility()
         stack.connect("notify::visible-child-name", self._on_view_switched)
@@ -180,7 +180,7 @@ class MainWindow(_BaseWindow):
         notebook = Gtk.Notebook()
         notebook.append_page(self.dialer, Gtk.Label(label="Dialer"))
         notebook.append_page(self.contacts, Gtk.Label(label="Contacts"))
-        notebook.append_page(self.calls, Gtk.Label(label="Calls"))
+        notebook.append_page(self.calls, Gtk.Label(label="Recent"))
         if self._settings.general.enable_messages:
             notebook.append_page(self.messages, Gtk.Label(label="Messages"))
         self._notebook = notebook
@@ -711,7 +711,7 @@ class MainWindow(_BaseWindow):
             svc.emit_incoming_call(peer or "")
 
     def _on_view_switched(self, *_args) -> None:
-        # Clear the missed badge when the user opens the Calls tab.
+        # Clear the missed badge when the user opens the Recent tab.
         if not _USE_ADW or not hasattr(self, "_stack"):
             return
         if self._stack.get_visible_child_name() == "calls" and self._missed_calls:
