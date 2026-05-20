@@ -55,7 +55,10 @@ class DialerView(Gtk.Box):
         keypad.set_margin_end(18)
 
         self._entry = Gtk.Entry()
-        self._entry.set_placeholder_text("Number or sip:user@host")
+        # No placeholder: the entry sits centred under the keypad and
+        # the placeholder text was visual noise — a stray 'Number or
+        # sip:user@host' line under the empty cursor. The user knows
+        # what the field is for.
         self._entry.set_alignment(0.5)
         self._entry.add_css_class("dialer-number")
         self._entry.connect("activate", lambda *_: self._emit_call())
