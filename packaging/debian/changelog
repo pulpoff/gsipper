@@ -1,3 +1,32 @@
+gsipper (1.3.27-1) unstable; urgency=medium
+
+  * Mic-mute toggle in the in-call pane. A small circular toggle
+    appears below the duration label when the call is connected
+    (and is hidden during incoming/ringing/calling/ended). The
+    icon flips between microphone-sensitivity-high-symbolic and
+    microphone-disabled-symbolic as you toggle. Under the hood
+    the toggle calls SipEndpoint.set_mic_muted() -> SipCall
+    .set_mic_muted(), which connect/disconnect the local capture
+    media from the remote call audio in pjsua2's conference
+    bridge. Mute state is preserved across mid-call media
+    re-bridges (hold/resume, codec renegotiation): if you muted
+    before the second onCallMediaState fires, we re-tear the
+    mic→peer link as soon as the new audio path comes up.
+  * Recording shows up in Recent without a manual refresh. The
+    Recent row was being rendered the instant the call ended
+    (via 'state==ended' -> calls.refresh()), but the MP3 file
+    didn't exist yet at that point — ffmpeg was still running
+    in a daemon thread. Added a 'recording-ready' handler that
+    fires on GLib.idle_add once the MP3 lands on disk, and
+    MainWindow re-refreshes Recent in response.
+  * ffmpeg conversion errors now log the actual stderr instead
+    of swallowing them. If your distro ships an ffmpeg without
+    libmp3lame, you'll now see 'Unknown encoder libmp3lame' (or
+    similar) in the gsipper log and can install
+    libavcodec-extra to fix it.
+
+ -- pulpoff <noreply@pulpoff.com>  Tue, 20 May 2026 00:00:00 +0000
+
 gsipper (1.3.26-1) unstable; urgency=medium
 
   * GNOME-Shell extension: drop the popup menu reintroduced in

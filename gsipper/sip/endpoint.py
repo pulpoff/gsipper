@@ -66,21 +66,40 @@ def _build_record_path(peer: str) -> Optional[str]:
     return os.path.join(_RECORDINGS_DIR, f"{ts}_{safe}.wav")
 
 
-def _convert_wav_to_mp3(wav_path: str, mp3_path: str) -> None:
-    """Run ffmpeg off the worker thread. Deletes the WAV on success."""
+def _convert_wav_to_mp3(wav_path: str, mp3_path: str,
+                        on_done: Optional[Callable[[str], None]] = None) -> None:
+    """Run ffmpeg off the worker thread. Deletes the WAV on success.
+
+    on_done is called with the mp3 path when the conversion succeeds
+    and the file is actually on disk — used to wake the UI so the
+    play button shows up next to the Recent row (which is rendered
+    immediately when the call ends, before ffmpeg has a chance to
+    write the MP3)."""
     try:
-        subprocess.run(
+        result = subprocess.run(
             ["ffmpeg", "-y", "-loglevel", "error", "-i", wav_path,
              "-c:a", "libmp3lame", "-q:a", "4", mp3_path],
-            check=True,
+            check=False,
+            capture_output=True,
+            text=True,
         )
+        if result.returncode != 0:
+            logger.error("ffmpeg conversion failed (rc=%d) %s -> %s\nstderr: %s",
+                         result.returncode, wav_path, mp3_path,
+                         (result.stderr or "").strip())
+            return
         try:
             os.unlink(wav_path)
         except OSError:
             pass
         logger.info("recording converted: %s", mp3_path)
+        if on_done is not None and os.path.exists(mp3_path):
+            try:
+                GLib.idle_add(on_done, mp3_path)
+            except Exception:
+                logger.exception("on_done dispatch failed")
     except Exception:
-        logger.exception("ffmpeg conversion failed: %s -> %s", wav_path, mp3_path)
+        logger.exception("ffmpeg invocation failed: %s -> %s", wav_path, mp3_path)
 
 if False:  # type-check only
     from .call import SipCall
@@ -237,6 +256,11 @@ class SipEndpoint:
         self._reg_handler: Optional[RegStateHandler] = None
         self._call_state_handler = None  # type: Optional[Callable]
         self._message_handler = None  # type: Optional[Callable]
+        # Fired (on the GTK main loop, via GLib.idle_add) once ffmpeg
+        # has finished converting a call's WAV to MP3 and the file is
+        # actually on disk. MainWindow uses it to re-refresh the
+        # Recent tab so the play button appears next to the row.
+        self._recording_ready_handler = None  # type: Optional[Callable[[str], None]]
         self._message_status_handler = None  # type: Optional[Callable]
         self._active_call = None  # type: Optional["SipCall"]
         self._worker: Optional[_SipWorker] = None
@@ -286,6 +310,11 @@ class SipEndpoint:
     def set_call_state_handler(self, handler) -> None:
         """handler(call: SipCall, state: str) — called on GTK main thread."""
         self._call_state_handler = handler
+
+    def set_recording_ready_handler(self, handler) -> None:
+        """Called (on the GTK main loop) when an MP3 from a finished
+        call's recording lands on disk. Arg is the absolute path."""
+        self._recording_ready_handler = handler
 
     def set_message_handler(self, handler) -> None:
         """handler(from_uri: str, body: str, content_type: str) — GTK thread."""
@@ -347,6 +376,17 @@ class SipEndpoint:
         if call is None:
             return
         self._worker.submit(call.safe_answer, 200)
+
+    def set_mic_muted(self, muted: bool) -> None:
+        """Mute / unmute the local mic for the active call. No-op if
+        there's no call. Runs on the worker thread because the
+        underlying conference-bridge calls are pjsua2 API."""
+        if self._worker is None:
+            return
+        call = self._active_call
+        if call is None:
+            return
+        self._worker.submit(call.set_mic_muted, bool(muted))
 
     def send_message(self, to_uri: str, body: str, message_id: str = "") -> bool:
         """Enqueue a SIP MESSAGE. Returns False only if pjsua2 is missing
@@ -650,7 +690,7 @@ class SipEndpoint:
                 mp3_path = wav_path[:-4] + ".mp3"
                 threading.Thread(
                     target=_convert_wav_to_mp3,
-                    args=(wav_path, mp3_path),
+                    args=(wav_path, mp3_path, self._recording_ready_handler),
                     name="gsipper-mp3",
                     daemon=True,
                 ).start()
