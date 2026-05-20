@@ -1,3 +1,11 @@
+gsipper (1.3.15-1) unstable; urgency=medium
+
+  * Settings: 'Favorites only' subtitle shortened from the
+    multi-line behaviour description to 'Kids and Seniors safe
+    quick dial mode for Favorite contacts'.
+
+ -- pulpoff <noreply@pulpoff.com>  Tue, 19 May 2026 00:00:00 +0000
+
 gsipper (1.3.14-1) unstable; urgency=medium
 
   * Status-dot menu in favorites-only mode is reduced to a single
