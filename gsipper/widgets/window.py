@@ -84,6 +84,9 @@ class MainWindow(_BaseWindow):
         self.dialer.connect("hangup-requested", self._on_hangup_requested)
         self.contacts = ContactsView()
         self.contacts.connect("call-requested", self._on_contact_call)
+        # Row body click = pre-fill the dialer (no auto-call). Uses the
+        # same handler the Recent-tab redial uses.
+        self.contacts.connect("prefill-requested", self._on_redial_requested)
         self.calls = CallsView()
         self.calls.connect("redial-requested", self._on_redial_requested)
         self.messages = MessagesView()

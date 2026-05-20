@@ -2,7 +2,8 @@
 //
 // Adds a phone icon to the top bar that reflects the running
 // gsipper instance's SIP status via D-Bus. The icon is hidden
-// while gsipper is not running.
+// while gsipper is not running. Clicking the icon invokes the
+// Show() method on the D-Bus interface (no popup menu).
 //
 // D-Bus contract (matches gsipper/dbus.py):
 //   bus name : com.pulpoff.gsipper
@@ -13,12 +14,12 @@
 //   methods  : Show(), Quit()
 //   signal   : IncomingCall(s peer)
 
+import Clutter from 'gi://Clutter';
 import GObject from 'gi://GObject';
 import St from 'gi://St';
 import Gio from 'gi://Gio';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js';
-import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 
 const BUS_NAME = 'com.pulpoff.gsipper';
@@ -50,19 +51,9 @@ class GsipperIndicator extends PanelMenu.Button {
         });
         this.add_child(this._icon);
 
-        this._statusItem = new PopupMenu.PopupMenuItem('Connecting…', {reactive: false});
-        this.menu.addMenuItem(this._statusItem);
-
-        this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
-
-        this._showItem = new PopupMenu.PopupMenuItem('Show gsipper');
-        this._showItem.connect('activate', () => this._invoke('Show'));
-        this.menu.addMenuItem(this._showItem);
-
-        this._quitItem = new PopupMenu.PopupMenuItem('Quit gsipper');
-        this._quitItem.connect('activate', () => this._invoke('Quit'));
-        this.menu.addMenuItem(this._quitItem);
-
+        // No popup menu — clicking the icon should directly bring
+        // the main window forward. The Status / MissedCalls tooltip
+        // and the IncomingCall notification remain.
         this._proxy = null;
         this._propsChangedId = 0;
         this._signalSubId = 0;
@@ -77,6 +68,22 @@ class GsipperIndicator extends PanelMenu.Button {
             () => this._connect(),
             () => this._disconnect(),
         );
+    }
+
+    // Intercept the panel-button click before PanelMenu.Button's
+    // default open-the-menu handler runs. Single tap / left click
+    // calls Show(); right-click is left to GNOME's standard
+    // panel-button behaviour (currently a no-op since menu is empty).
+    vfunc_event(event) {
+        if (event.type() === Clutter.EventType.BUTTON_PRESS ||
+            event.type() === Clutter.EventType.TOUCH_BEGIN) {
+            const button = event.get_button?.() ?? 1;
+            if (button === 1) {
+                this._invoke('Show');
+                return Clutter.EVENT_STOP;
+            }
+        }
+        return Clutter.EVENT_PROPAGATE;
     }
 
     _connect() {
@@ -129,10 +136,13 @@ class GsipperIndicator extends PanelMenu.Button {
             this._icon.remove_style_class_name(c);
         this._icon.add_style_class_name(`gsipper-${status}`);
 
+        // Tooltip = status + optional missed-call count. Lives on
+        // the icon (St.Icon supports the standard `accessible-name`
+        // / hover tooltip mechanism via Clutter actor properties).
         let label = status.charAt(0).toUpperCase() + status.slice(1);
         if (missed > 0)
             label += `  ·  ${missed} missed`;
-        this._statusItem.label.text = label;
+        this._icon.set_accessible_name(`gsipper — ${label}`);
     }
 
     _notifyIncoming(peer) {

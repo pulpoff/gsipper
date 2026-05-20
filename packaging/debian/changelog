@@ -1,3 +1,24 @@
+gsipper (1.3.7-1) unstable; urgency=medium
+
+  * GNOME-Shell extension: no more popup menu. A single click on
+    the panel icon now invokes the Show() D-Bus method directly,
+    bringing the gsipper window to the front. The previous menu
+    items (status text, 'Show gsipper', 'Quit gsipper') are gone;
+    quitting is via the in-window menu or Ctrl+Q. extension/
+    metadata.json version bumped 1 -> 2.
+  * Contacts: clicking the row body (name) now PRE-FILLS the
+    dialer with the contact's primary number and switches to the
+    Dialer tab without placing the call. Tapping the green call
+    icon on the row (or picking 'Call <number>' from the row
+    menu) still dials immediately. New 'prefill-requested'
+    signal on ContactsView is wired to the same window handler
+    the Recent-tab redial uses.
+  * README desktop-integration section: dropped the
+    'tray-extension's Quit (D-Bus)' wording; explicitly says
+    'single click brings the gsipper window forward via D-Bus'.
+
+ -- pulpoff <noreply@pulpoff.com>  Tue, 19 May 2026 00:00:00 +0000
+
 gsipper (1.3.6-1) unstable; urgency=medium
 
   * Rename the third tab from 'Calls' to 'Recent', and swap its
