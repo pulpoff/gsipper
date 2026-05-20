@@ -1,8 +1,8 @@
 {
   "uuid": "gsipper@pulpoff.com",
   "name": "gsipper status",
-  "description": "Top-bar status indicator for the gsipper SIP client. Shows the registration status as a coloured phone icon (green online / yellow connecting / red offline) and announces incoming calls. Click the icon to bring the gsipper window forward.",
+  "description": "Top-bar status indicator for the gsipper SIP client. Shows the registration status as a coloured dot (green online / yellow connecting / red offline). Click the dot for the status menu: Show gsipper, Connect / Disconnect, Reconnect, Exit.",
   "shell-version": ["45", "46", "47", "48", "49"],
-  "version": 5,
+  "version": 6,
   "url": "https://github.com/pulpoff/gsipper"
 }

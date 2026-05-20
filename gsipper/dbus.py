@@ -7,9 +7,13 @@ connection rather than calling bus_own_name a second time.
 Interface
     com.pulpoff.gsipper.Status
         Status        : s   ("online" | "connecting" | "offline")
+        FavoritesOnly : b   true when kiosk mode hides Connect/Disconnect
         MissedCalls   : u
         Show()              — bring the main window to front
         Quit()              — quit gsipper
+        Connect()           — REGISTER (mirrors in-app status menu)
+        Disconnect()        — un-REGISTER + latch offline
+        Reconnect()         — full account teardown + rebuild
         IncomingCall(s)     — emitted when an INVITE arrives
 """
 
@@ -30,9 +34,13 @@ _INTROSPECTION_XML = """
 <node>
   <interface name='com.pulpoff.gsipper.Status'>
     <property name='Status' type='s' access='read'/>
+    <property name='FavoritesOnly' type='b' access='read'/>
     <property name='MissedCalls' type='u' access='read'/>
     <method name='Show'/>
     <method name='Quit'/>
+    <method name='Connect'/>
+    <method name='Disconnect'/>
+    <method name='Reconnect'/>
     <signal name='IncomingCall'>
       <arg type='s' name='peer'/>
     </signal>
@@ -47,13 +55,20 @@ class StatusService:
         connection: Gio.DBusConnection,
         on_show: Callable[[], None],
         on_quit: Callable[[], None],
+        on_connect: Optional[Callable[[], None]] = None,
+        on_disconnect: Optional[Callable[[], None]] = None,
+        on_reconnect: Optional[Callable[[], None]] = None,
     ) -> None:
         self._connection = connection
         self._on_show = on_show
         self._on_quit = on_quit
+        self._on_connect = on_connect
+        self._on_disconnect = on_disconnect
+        self._on_reconnect = on_reconnect
         self._registration_id = 0
 
         self._status = "offline"
+        self._favorites_only = False
         self._missed_calls = 0
 
         try:
@@ -86,6 +101,30 @@ class StatusService:
             return
         self._status = status
         self._emit_properties_changed({"Status": GLib.Variant("s", status)})
+
+    def set_favorites_only(self, enabled: bool) -> None:
+        enabled = bool(enabled)
+        if enabled == self._favorites_only:
+            return
+        self._favorites_only = enabled
+        self._emit_properties_changed(
+            {"FavoritesOnly": GLib.Variant("b", enabled)})
+
+    def set_handlers(
+        self,
+        on_connect: Optional[Callable[[], None]] = None,
+        on_disconnect: Optional[Callable[[], None]] = None,
+        on_reconnect: Optional[Callable[[], None]] = None,
+    ) -> None:
+        """Wire up the Connect/Disconnect/Reconnect callbacks once the
+        MainWindow has been built (StatusService itself is constructed
+        earlier on do_dbus_register, before any window exists)."""
+        if on_connect is not None:
+            self._on_connect = on_connect
+        if on_disconnect is not None:
+            self._on_disconnect = on_disconnect
+        if on_reconnect is not None:
+            self._on_reconnect = on_reconnect
 
     def set_missed_calls(self, count: int) -> None:
         count = max(0, int(count))
@@ -127,6 +166,18 @@ class StatusService:
             elif method_name == "Quit":
                 GLib.idle_add(self._on_quit)
                 invocation.return_value(None)
+            elif method_name == "Connect":
+                if self._on_connect is not None:
+                    GLib.idle_add(self._on_connect)
+                invocation.return_value(None)
+            elif method_name == "Disconnect":
+                if self._on_disconnect is not None:
+                    GLib.idle_add(self._on_disconnect)
+                invocation.return_value(None)
+            elif method_name == "Reconnect":
+                if self._on_reconnect is not None:
+                    GLib.idle_add(self._on_reconnect)
+                invocation.return_value(None)
             else:
                 invocation.return_error_literal(
                     Gio.DBusError.quark(),
@@ -142,6 +193,8 @@ class StatusService:
                          _interface_name, property_name):
         if property_name == "Status":
             return GLib.Variant("s", self._status)
+        if property_name == "FavoritesOnly":
+            return GLib.Variant("b", self._favorites_only)
         if property_name == "MissedCalls":
             return GLib.Variant("u", self._missed_calls)
         return None
