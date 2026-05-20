@@ -91,6 +91,10 @@ PJSIP's PJSUA2 Python bindings.
   - **Enable messages** — show or hide the Messages tab from the view
     switcher. Off by default; toggling is live — no restart needed.
     Stored conversations are kept either way.
+  - **Favorites only** — hides the tab switcher and shows favourited
+    contacts as a 2-column grid of quick-dial cards. Tapping a card
+    places a call; the regular in-call view appears for the duration
+    of the call and the grid comes back when it ends. Off by default.
 
 **Desktop integration**
 
@@ -135,7 +139,7 @@ python3 -m gsipper
 
 ```sh
 ./build.sh --deb
-sudo apt install ./dist/gsipper_1.3.8_amd64.deb
+sudo apt install ./dist/gsipper_1.3.9_amd64.deb
 sudo gsipper --install-pjsua2     # compile PJSUA2 bindings (one-time)
 ```
 
