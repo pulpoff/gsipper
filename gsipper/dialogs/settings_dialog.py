@@ -26,6 +26,7 @@ gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 from gi.repository import Adw, Gio, Gtk  # noqa: E402
 
+from ..sound import Ringer, list_bundled_ringtones
 from ..storage.settings import GeneralSettings, Settings
 
 
@@ -129,9 +130,58 @@ class SettingsDialog(Adw.PreferencesDialog):
         group.add(self._row_favorites_only)
 
         page.add(group)
+
+        # ----- Ringtone selector ------------------------------------
+        # Adw.ComboRow with a "Default" first entry plus every MP3/OGG
+        # bundled under /usr/share/gsipper/ringtones/ (deb layout) or
+        # the source tree's ringtones/ dir (dev runs). The Play button
+        # in the suffix previews ~5s of the current selection.
+        ring_group = Adw.PreferencesGroup(title="Ringtone")
+        self._ringtone_names = [""] + list_bundled_ringtones()
+        labels = ["Default"] + [
+            os.path.splitext(n)[0].title()
+            for n in self._ringtone_names[1:]
+        ]
+        model = Gtk.StringList.new(labels)
+        self._row_ringtone = Adw.ComboRow(
+            title="Ringtone",
+            subtitle="Sound played for incoming calls.",
+            model=model,
+        )
+        # Restore previous selection by basename if still present.
+        try:
+            sel = self._ringtone_names.index(g.ringtone or "")
+        except ValueError:
+            sel = 0
+        self._row_ringtone.set_selected(sel)
+        ring_group.add(self._row_ringtone)
+
+        self._preview_ringer: Ringer | None = None
+        play_btn = Gtk.Button.new_from_icon_name("media-playback-start-symbolic")
+        play_btn.set_tooltip_text("Preview")
+        play_btn.add_css_class("flat")
+        play_btn.set_valign(Gtk.Align.CENTER)
+        play_btn.connect("clicked", self._on_preview_clicked)
+        self._row_ringtone.add_suffix(play_btn)
+
+        page.add(ring_group)
         self.add(page)
 
         self.connect("closed", self._on_closed)
+
+    def _selected_ringtone(self) -> str:
+        idx = self._row_ringtone.get_selected()
+        if 0 <= idx < len(self._ringtone_names):
+            return self._ringtone_names[idx]
+        return ""
+
+    def _on_preview_clicked(self, _btn) -> None:
+        if self._preview_ringer is None:
+            self._preview_ringer = Ringer()
+        try:
+            self._preview_ringer.play_once(self._selected_ringtone())
+        except Exception:
+            logger.exception("ringtone preview failed")
 
     def _on_closed(self, *_args) -> None:
         # Preserve any GeneralSettings fields that the dialog doesn't
@@ -144,9 +194,17 @@ class SettingsDialog(Adw.PreferencesDialog):
             call_records=self._row_records.get_active(),
             enable_messages=self._row_messages.get_active(),
             favorites_only=self._row_favorites_only.get_active(),
+            ringtone=self._selected_ringtone(),
             window_width=self._settings.general.window_width,
             window_height=self._settings.general.window_height,
         )
+        # Stop any preview that might still be looping when the user
+        # closes the dialog mid-playback.
+        if self._preview_ringer is not None:
+            try:
+                self._preview_ringer.stop()
+            except Exception:
+                pass
         # Side-effect: autostart file follows the toggle immediately.
         try:
             install_autostart(new.run_on_start)
