@@ -158,6 +158,14 @@ if HAVE_PJSUA2:
                 try:
                     aud = self.getAudioMedia(idx)
                     ep = pj.Endpoint.instance()
+                    # Restore real capture + playback devices in case
+                    # the previous call's _do_release_sound_dev left
+                    # pjsua2 routed to the null device. -1, -1 means
+                    # use the user's system defaults.
+                    try:
+                        ep.audDevManager().setSndDev(-1, -1)
+                    except Exception:
+                        logger.exception("setSndDev failed; relying on PJSUA defaults")
                     mic = ep.audDevManager().getCaptureDevMedia()
                     spk = ep.audDevManager().getPlaybackDevMedia()
                     mic.startTransmit(aud)

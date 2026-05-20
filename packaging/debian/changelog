@@ -1,3 +1,28 @@
+gsipper (1.3.18-1) unstable; urgency=medium
+
+  * Incoming calls were being auto-rejected with 486 Busy and the
+    ringin popup never appeared. From the user's Asterisk log:
+      gsipper sends 180 Ringing -> immediately also sends 486 Busy.
+    Root cause: _active_call wasn't being cleared between calls in
+    every code path (likely after an early-state outgoing whose
+    'ended' callback was racing with the next incoming on the
+    pjsua2 callback thread). _on_incoming_call_internal saw the
+    stale ref and took the 'second concurrent call' branch.
+    Fix: before sending 486 we now check the previous call's state
+    — if it's STATE_ENDED, we clear _active_call as stale and
+    accept the new incoming. Genuinely-active second calls still
+    get 486 as before.
+  * Microphone indicator (top-bar) stayed lit after a call ended:
+    PJSUA keeps the OS capture device open for the lifetime of
+    the endpoint by default. After every call's 'ended' state we
+    now submit ep.audDevManager().setNullDev() on the SIP worker
+    thread to route audio to a null sink and release the mic
+    handle. The next call's onCallMediaState calls setSndDev(-1,
+    -1) before bridging mic <-> remote audio to restore the
+    user's system defaults.
+
+ -- pulpoff <noreply@pulpoff.com>  Tue, 20 May 2026 00:00:00 +0000
+
 gsipper (1.3.17-1) unstable; urgency=medium
 
   * Extension: don't construct the PopupMenu at all. Previous
