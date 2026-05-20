@@ -3,6 +3,6 @@
   "name": "gsipper status",
   "description": "Top-bar status indicator for the gsipper SIP client. Shows the registration status as a coloured phone icon (green online / yellow connecting / red offline) and announces incoming calls. Click the icon to bring the gsipper window forward.",
   "shell-version": ["45", "46", "47", "48", "49"],
-  "version": 3,
+  "version": 4,
   "url": "https://github.com/pulpoff/gsipper"
 }
