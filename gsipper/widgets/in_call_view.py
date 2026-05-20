@@ -47,6 +47,10 @@ class InCallView(Gtk.Box):
         # incoming-ringing call. Wired by MainWindow to SipEndpoint
         # .answer_active(), same path the RinginWindow popup uses.
         "answer-requested": (GObject.SignalFlags.RUN_FIRST, None, ()),
+        # Mute toggle for the local mic. Payload is the new muted
+        # state. Only fires while the call is connected (the toggle
+        # button is hidden in every other state).
+        "mute-toggled": (GObject.SignalFlags.RUN_FIRST, None, (bool,)),
     }
 
     def __init__(self) -> None:
@@ -75,6 +79,24 @@ class InCallView(Gtk.Box):
         spacer = Gtk.Box()
         spacer.set_vexpand(True)
         self.append(spacer)
+
+        # Mid-call controls (mute, etc.). Visible only while the call
+        # is connected — hidden during ringing/calling/incoming so the
+        # accept/decline buttons stay the focus, and hidden after
+        # 'ended' to match the in-call pane's reset.
+        controls_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL,
+                               halign=Gtk.Align.CENTER, spacing=12)
+        controls_row.set_margin_bottom(12)
+        self._mute_btn = Gtk.ToggleButton()
+        self._mute_btn.set_icon_name("microphone-sensitivity-high-symbolic")
+        self._mute_btn.set_tooltip_text("Mute microphone")
+        self._mute_btn.add_css_class("circular")
+        self._mute_btn.set_size_request(48, 48)
+        self._mute_btn.connect("toggled", self._on_mute_toggled)
+        controls_row.append(self._mute_btn)
+        self._controls_row = controls_row
+        self._controls_row.set_visible(False)
+        self.append(controls_row)
 
         # Single button row that hosts either:
         #   - [Answer] [Decline]  for incoming-ringing calls
@@ -150,6 +172,8 @@ class InCallView(Gtk.Box):
                                and self._state in ("incoming", "ringing"))
         self._answer_btn.set_visible(is_incoming_ringing)
         self._hangup_btn.set_label("Decline" if is_incoming_ringing else "End")
+        # Mid-call controls only make sense once the call is up.
+        self._controls_row.set_visible(self._state == "connected")
 
     def reset(self) -> None:
         self._stop_timer()
@@ -159,7 +183,27 @@ class InCallView(Gtk.Box):
         self._incoming = False
         self._state_label.set_text("")
         self._peer_label.set_text("")
+        # Drop the mute state so the next call starts un-muted; do it
+        # silently (handler_block) so we don't fire mute-toggled while
+        # there's no call to apply it to.
+        self._mute_btn.handler_block_by_func(self._on_mute_toggled)
+        self._mute_btn.set_active(False)
+        self._mute_btn.set_icon_name("microphone-sensitivity-high-symbolic")
+        self._mute_btn.set_tooltip_text("Mute microphone")
+        self._mute_btn.handler_unblock_by_func(self._on_mute_toggled)
         self._refresh_buttons()
+
+    def _on_mute_toggled(self, btn: Gtk.ToggleButton) -> None:
+        muted = btn.get_active()
+        # Adwaita gives us muted/unmuted symbolic glyphs for the same
+        # mic — flip the icon + tooltip so the button visibly reflects
+        # the current state.
+        btn.set_icon_name(
+            "microphone-disabled-symbolic" if muted
+            else "microphone-sensitivity-high-symbolic"
+        )
+        btn.set_tooltip_text("Unmute microphone" if muted else "Mute microphone")
+        self.emit("mute-toggled", muted)
 
     # ------------------------------------------------------------------
     # Duration timer

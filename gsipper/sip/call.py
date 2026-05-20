@@ -96,6 +96,7 @@ if HAVE_PJSUA2:
             self._recorder_started = False
             self._cached_call_audio = None
             self._cached_mic_audio = None
+            self._mic_muted = False
 
         # --------------------------------------------------------------
         # pjsua2 callbacks
@@ -176,6 +177,15 @@ if HAVE_PJSUA2:
                     spk = ep.audDevManager().getPlaybackDevMedia()
                     mic.startTransmit(aud)
                     aud.startTransmit(spk)
+                    # Preserve mute across mid-call media re-bridges
+                    # (hold/resume, codec renegotiation): if the user
+                    # had muted before this onCallMediaState fired,
+                    # tear the mic→peer link straight back down.
+                    if self._mic_muted:
+                        try:
+                            mic.stopTransmit(aud)
+                        except Exception:
+                            logger.exception("re-mute after media re-bridge failed")
                     logger.info("audio media connected (idx=%d)", idx)
                     # Cache for onCallState in case audio came up before
                     # the call reached CONFIRMED (early media).
@@ -235,6 +245,35 @@ if HAVE_PJSUA2:
             rec = self._recorder
             self._recorder = None
             return rec
+
+        def set_mic_muted(self, muted: bool) -> None:
+            """Mute / unmute the local capture device for this call.
+
+            Implementation: connect / disconnect the mic from the
+            remote call audio media in pjsua2's conference bridge.
+            When muted, the peer hears silence; when unmuted we
+            re-bridge the mic. Local playback (we hear the peer) is
+            unaffected.
+
+            Idempotent — calling with the current state is a no-op."""
+            aud = self._cached_call_audio
+            mic = self._cached_mic_audio
+            if aud is None or mic is None:
+                logger.info("mute toggle ignored: audio not bridged yet "
+                            "(call_audio=%s mic_audio=%s)",
+                            aud is not None, mic is not None)
+                return
+            if bool(muted) == bool(self._mic_muted):
+                return
+            try:
+                if muted:
+                    mic.stopTransmit(aud)
+                else:
+                    mic.startTransmit(aud)
+                self._mic_muted = bool(muted)
+                logger.info("mic %s", "muted" if muted else "unmuted")
+            except Exception:
+                logger.exception("mic mute toggle failed")
 
         # --------------------------------------------------------------
         # Helpers

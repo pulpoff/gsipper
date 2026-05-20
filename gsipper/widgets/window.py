@@ -85,6 +85,7 @@ class MainWindow(_BaseWindow):
         # Re-emitted by InCallView when an incoming-ringing call's
         # Answer button is tapped; same handler as the RinginWindow.
         self.dialer.connect("answer-requested", self._on_ringin_answer)
+        self.dialer.connect("mute-toggled", self._on_mute_toggled)
         self.contacts = ContactsView()
         self.contacts.connect("call-requested", self._on_contact_call)
         # Row body click = pre-fill the dialer (no auto-call). Uses the
@@ -374,6 +375,10 @@ class MainWindow(_BaseWindow):
         self._sip.set_call_state_handler(self._on_call_state)
         self._sip.set_message_handler(self._on_sip_message)
         self._sip.set_message_status_handler(self._on_sip_message_status)
+        # Fired (on the GTK main loop) once ffmpeg finishes converting
+        # a call's WAV to MP3 — re-refresh Recent so the row's play
+        # button appears next to the just-converted file.
+        self._sip.set_recording_ready_handler(self._on_recording_ready)
         self._apply_account_settings()
         return False  # one-shot
 
@@ -778,6 +783,22 @@ class MainWindow(_BaseWindow):
         if self._sip is None:
             return
         self._sip.answer_active()
+
+    def _on_mute_toggled(self, _dialer, muted: bool) -> None:
+        if self._sip is None:
+            return
+        self._sip.set_mic_muted(bool(muted))
+
+    def _on_recording_ready(self, _path: str) -> bool:
+        # ffmpeg finished writing the MP3 — re-render Recent so the
+        # play button shows up next to the row we appended on call
+        # end (the file didn't exist on disk then). Returning False
+        # tells GLib.idle_add not to repeat.
+        try:
+            self.calls.refresh()
+        except Exception:
+            logger.exception("calls refresh after recording-ready failed")
+        return False
 
     def _on_ringin_decline(self, *_args) -> None:
         if self._sip is None:

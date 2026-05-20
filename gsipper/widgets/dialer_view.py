@@ -41,6 +41,9 @@ class DialerView(Gtk.Box):
         # for incoming-ringing calls). MainWindow connects it to
         # SipEndpoint.answer_active().
         "answer-requested": (GObject.SignalFlags.RUN_FIRST, None, ()),
+        # Re-emitted from the InCallView mute toggle (visible only
+        # while a call is connected). Payload is the new muted state.
+        "mute-toggled": (GObject.SignalFlags.RUN_FIRST, None, (bool,)),
     }
 
     def __init__(self) -> None:
@@ -93,6 +96,8 @@ class DialerView(Gtk.Box):
                               lambda *_: self.emit("hangup-requested"))
         self._in_call.connect("answer-requested",
                               lambda *_: self.emit("answer-requested"))
+        self._in_call.connect("mute-toggled",
+                              lambda _w, m: self.emit("mute-toggled", m))
         self._stack.add_named(self._in_call, "incall")
 
         self._stack.set_visible_child_name("keypad")
