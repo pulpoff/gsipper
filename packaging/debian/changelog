@@ -1,3 +1,29 @@
+gsipper (1.3.22-1) unstable; urgency=medium
+
+  * Incoming-call UI is now SINGLE. The floating ring-in popup
+    has been removed (the inline in-call view inside the Dialer
+    tab is the only Answer / Decline surface). User report:
+    'show only 1 interface not double' — they had both the
+    popup and the inline view stacked. The GNOME notification
+    + ringtone still fire.
+  * InCallView button order swapped: green Answer button on the
+    LEFT, red Decline / End button on the RIGHT — matches the
+    convention every smartphone / softphone uses.
+  * Answer button is now ACTUAL green, not GNOME's blue
+    'suggested-action'. New .call-answer CSS class in
+    resources/style.css with the GNOME palette green (#2ec27e)
+    + hover / active / disabled states.
+  * Recording diagnostics: the in-progress recording skipped /
+    started decision is now logged at every junction
+    (onCallMediaState, onCallState=CONNECTED, _maybe_start_recording)
+    with the record_to value and whether cached audio refs are
+    present. A no-recording incoming call will now print the
+    exact reason ('record_to is empty', 'cached audio refs=False
+    at CONNECTED', etc.) so we can pin down where the pipeline
+    breaks for the user.
+
+ -- pulpoff <noreply@pulpoff.com>  Tue, 20 May 2026 00:00:00 +0000
+
 gsipper (1.3.21-1) unstable; urgency=medium
 
   * Inline Accept button for incoming calls. From the user's

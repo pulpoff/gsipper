@@ -53,6 +53,20 @@
     font-weight: bold;
 }
 
+/* Green accept-call pill on the in-call view + ring-in popup. GNOME's
+ * built-in .suggested-action is blue; phone clients are universally
+ * green for accept (and red for decline via .destructive-action). */
+.call-answer {
+    background-color: #2ec27e;  /* GNOME green */
+    color: white;
+}
+.call-answer:hover  { background-color: #33d17a; }
+.call-answer:active { background-color: #26a269; }
+.call-answer:disabled {
+    background-color: alpha(#2ec27e, 0.4);
+    color: alpha(white, 0.7);
+}
+
 /* Favorites grid: 8 muted tints chosen so the same contact always
  * lands on the same colour (stable hash on name), and so adjacent
  * cards differentiate visually without overwhelming the layout.

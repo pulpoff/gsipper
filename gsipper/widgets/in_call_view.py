@@ -2,11 +2,13 @@
 
 Shown inside the Dialer tab while a call is active. Displays the peer,
 state and call duration; a big red hangup button at the bottom ends
-the call.
+the call. For incoming-ringing calls a green Answer button appears
+alongside, and the red one's label flips to 'Decline'.
 """
 
 from __future__ import annotations
 
+import logging
 import time
 from typing import Optional
 
@@ -14,6 +16,9 @@ import gi
 
 gi.require_version("Gtk", "4.0")
 from gi.repository import GLib, GObject, Gtk  # noqa: E402
+
+
+logger = logging.getLogger(__name__)
 
 
 _STATE_LABELS = {
@@ -72,12 +77,28 @@ class InCallView(Gtk.Box):
         self.append(spacer)
 
         # Single button row that hosts either:
-        #   - [Decline] [Answer]  for incoming-ringing calls
+        #   - [Answer] [Decline]  for incoming-ringing calls
         #   - [End]               for everything else
         # set_call_kind() flips between layouts; we always show ONE
-        # row so the in-call pane never resizes mid-call.
+        # row so the in-call pane never resizes mid-call. The Answer
+        # button comes first (left) so the user's natural reach lands
+        # on accept; the Decline / End button is on the right.
         btn_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL,
                           halign=Gtk.Align.CENTER, spacing=24)
+
+        self._answer_btn = Gtk.Button(label="Answer")
+        self._answer_btn.set_icon_name("call-start-symbolic")
+        # .call-answer is the gsipper green pill (resources/style.css);
+        # GNOME's stock 'suggested-action' is blue, not green, which is
+        # the wrong colour for an accept-call button.
+        self._answer_btn.add_css_class("call-answer")
+        self._answer_btn.add_css_class("pill")
+        self._answer_btn.set_size_request(150, 56)
+        self._answer_btn.connect("clicked",
+                                 lambda *_: self.emit("answer-requested"))
+        # Hidden by default — only shown for incoming-ringing.
+        self._answer_btn.set_visible(False)
+        btn_row.append(self._answer_btn)
 
         self._hangup_btn = Gtk.Button(label="End")
         self._hangup_btn.set_icon_name("call-stop-symbolic")
@@ -87,17 +108,6 @@ class InCallView(Gtk.Box):
         self._hangup_btn.connect("clicked",
                                  lambda *_: self.emit("hangup-requested"))
         btn_row.append(self._hangup_btn)
-
-        self._answer_btn = Gtk.Button(label="Answer")
-        self._answer_btn.set_icon_name("call-start-symbolic")
-        self._answer_btn.add_css_class("suggested-action")
-        self._answer_btn.add_css_class("pill")
-        self._answer_btn.set_size_request(150, 56)
-        self._answer_btn.connect("clicked",
-                                 lambda *_: self.emit("answer-requested"))
-        # Hidden by default — only shown for incoming-ringing.
-        self._answer_btn.set_visible(False)
-        btn_row.append(self._answer_btn)
 
         self.append(btn_row)
 
