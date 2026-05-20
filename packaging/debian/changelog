@@ -1,3 +1,19 @@
+gsipper (1.3.29-1) unstable; urgency=medium
+
+  * storage/history.load_history(): include recording_path when
+    reconstructing CallRecord from JSON. asdict() wrote the
+    field on save, but the loader's explicit constructor call
+    listed every other field except recording_path, so it always
+    came back as "" — and CallsView's row factory's
+    bool(record.recording_path) gate kept the play button
+    permanently hidden. This is why no row in Recent ever grew
+    the ▶ button even though the MP3s were on disk and ffmpeg
+    + the recording-ready refresh chain both fired correctly.
+    The on-disk history.json already contains the paths, so
+    existing rows light up immediately after the upgrade.
+
+ -- pulpoff <noreply@pulpoff.com>  Tue, 20 May 2026 00:00:00 +0000
+
 gsipper (1.3.28-1) unstable; urgency=medium
 
   * Diagnostic and noise fixes for the call-recording flow:
