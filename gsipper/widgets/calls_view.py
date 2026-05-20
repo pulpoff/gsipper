@@ -140,6 +140,11 @@ class CallsView(Gtk.Box):
             child = nxt
 
         records: List[CallRecord] = load_history()
+        # Build a one-shot digits -> name map for this refresh so the
+        # row factory can show a friendly contact name above the
+        # number when the call's peer matches a stored contact.
+        self._contact_names_by_digits = self._build_contact_name_index()
+
         if not records:
             self._stack.set_visible_child_name("empty")
             return
@@ -147,6 +152,44 @@ class CallsView(Gtk.Box):
         for record in records:
             self._listbox.append(self._build_row(record))
         self._stack.set_visible_child_name("list")
+
+    def _build_contact_name_index(self) -> dict:
+        """digits-only phone-number -> contact name. Built once per
+        refresh() so the row factory doesn't pay the contacts.json
+        load + per-phone scan O(n) on every redraw."""
+        from ..storage.contacts import load_contacts
+        index: dict = {}
+        try:
+            for c in load_contacts():
+                if not c.name:
+                    continue
+                for phone in c.phones:
+                    digits = "".join(ch for ch in phone.get("number", "")
+                                     if ch.isdigit())
+                    if digits:
+                        index.setdefault(digits, c.name)
+        except Exception:
+            pass
+        return index
+
+    def _contact_name_for(self, record: CallRecord) -> str:
+        """Return the contact name whose phone matches record.peer
+        (digit-suffix match — covers '00…' / '+…' / 'national vs
+        international' formatting), or '' if no match."""
+        index = getattr(self, "_contact_names_by_digits", None) or {}
+        if not index:
+            return ""
+        digits = "".join(ch for ch in (record.peer or "") if ch.isdigit())
+        if not digits:
+            return ""
+        if digits in index:
+            return index[digits]
+        # Tail-match in either direction: the call might have stripped
+        # a country prefix, or the stored contact might lack one.
+        for stored_digits, name in index.items():
+            if stored_digits.endswith(digits) or digits.endswith(stored_digits):
+                return name
+        return ""
 
     # ------------------------------------------------------------------
     # Row factory
@@ -162,11 +205,21 @@ class CallsView(Gtk.Box):
     def _build_row(self, record: CallRecord):
         has_recording = bool(record.recording_path) and \
                         os.path.exists(record.recording_path)
+        # When the call's peer matches a stored contact, the row's
+        # title shows the friendly name and the number is folded
+        # into the subtitle. Plain number-only otherwise.
+        contact_name = self._contact_name_for(record)
+        title = contact_name or (record.peer or "(unknown)")
+        meta = _row_subtitle(record)
+        if contact_name and record.peer:
+            subtitle = f"{record.peer}  ·  {meta}"
+        else:
+            subtitle = meta
 
         if _USE_ADW:
             row = Adw.ActionRow(
-                title=record.peer or "(unknown)",
-                subtitle=_row_subtitle(record),
+                title=title,
+                subtitle=subtitle,
             )
             row.add_prefix(_direction_icon(record))
             if has_recording:
@@ -193,11 +246,10 @@ class CallsView(Gtk.Box):
         box.append(_direction_icon(record))
         text = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0,
                        hexpand=True)
-        title = Gtk.Label(label=record.peer or "(unknown)",
-                          xalign=0.0)
-        title.add_css_class("heading")
-        text.append(title)
-        sub = Gtk.Label(label=_row_subtitle(record), xalign=0.0)
+        title_lbl = Gtk.Label(label=title, xalign=0.0)
+        title_lbl.add_css_class("heading")
+        text.append(title_lbl)
+        sub = Gtk.Label(label=subtitle, xalign=0.0)
         sub.add_css_class("dim-label")
         sub.add_css_class("caption")
         text.append(sub)
