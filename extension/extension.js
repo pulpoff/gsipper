@@ -2,28 +2,16 @@
 //
 // Adds a small coloured dot to the top bar (green online, yellow
 // connecting, red offline) that mirrors the running gsipper
-// instance's SIP status via D-Bus. The icon is hidden while gsipper
-// is not running. Left-click opens a popup menu that matches the
-// in-app status-dot menu:
-//
-//     normal mode:    Show gsipper
-//                     ───────────
-//                     Disconnect  (when online)
-//                     Connect     (when connecting / offline)
-//                     Reconnect
-//                     ───────────
-//                     Exit
-//
-//     favorites_only: Show gsipper
-//                     ───────────
-//                     Reconnect
+// instance's SIP status via D-Bus. The icon is hidden while
+// gsipper is not running. Clicking the dot invokes Show() on the
+// D-Bus interface — no popup menu, the in-window status dot
+// already exposes Connect / Disconnect / Reconnect / Exit.
 //
 // D-Bus contract (matches gsipper/dbus.py):
 //   bus name : com.pulpoff.gsipper
 //   path     : /com/pulpoff/gsipper/Status
 //   interface: com.pulpoff.gsipper.Status
 //   props    : s Status        ("online" | "connecting" | "offline")
-//              b FavoritesOnly
 //              u MissedCalls
 //   methods  : Show(), Quit(), Connect(), Disconnect(), Reconnect()
 //   signal   : IncomingCall(s peer)
@@ -34,7 +22,6 @@ import St from 'gi://St';
 import Gio from 'gi://Gio';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js';
-import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 
 const BUS_NAME = 'com.pulpoff.gsipper';
@@ -62,54 +49,51 @@ const GsipperProxy = Gio.DBusProxy.makeProxyWrapper(STATUS_IFACE);
 const GsipperIndicator = GObject.registerClass(
 class GsipperIndicator extends PanelMenu.Button {
     _init() {
-        super._init(0.0, 'gsipper');
+        // The third arg to PanelMenu.Button._init is `dontCreateMenu`.
+        // When true, no PopupMenu is attached to `this.menu`; the
+        // parent's _onEvent guards with `if (this.menu)` and quietly
+        // does nothing on click. Combined with our own click handler
+        // below we get a clean single-click-runs-Show() behaviour
+        // with zero menu surface.
+        super._init(0.0, 'gsipper', true);
 
-        // Coloured dot (not an icon). St.Widget with the dot styled
-        // entirely from CSS — background colour comes from
-        // .gsipper-online / -connecting / -offline; size + radius
-        // come from .gsipper-status-dot. Wrapped in a Bin so the
-        // panel's vertical centring works the same as for an icon.
-        this._dot = new St.Widget({
-            style_class: 'gsipper-status-dot gsipper-offline',
-            y_align: Clutter.ActorAlign.CENTER,
+        // Coloured dot. media-record-symbolic is a filled circle in
+        // every GNOME icon theme; using St.Icon (rather than a bare
+        // St.Widget) lets the panel handle sizing + vertical
+        // centring, and the standard `color:` CSS rules on
+        // .gsipper-online / -connecting / -offline tint the
+        // symbolic to the right state colour.
+        this._icon = new St.Icon({
+            icon_name: 'media-record-symbolic',
+            style_class: 'system-status-icon gsipper-status-dot gsipper-offline',
         });
-        this._dotBin = new St.Bin({
-            child: this._dot,
-            style_class: 'gsipper-status-icon',
-            y_align: Clutter.ActorAlign.CENTER,
+        this.add_child(this._icon);
+
+        // Belt-and-suspenders: a few downstream/forked Shells ignore
+        // dontCreateMenu. If `this.menu` somehow still exists, also
+        // turn its open/toggle into Show() — never a popup.
+        if (this.menu) {
+            this.menu.open = () => this._invoke('Show');
+            this.menu.toggle = () => this._invoke('Show');
+        }
+
+        // Direct click handler. button-press-event fires AFTER the
+        // parent's 'event' signal, but since the parent does nothing
+        // when this.menu is null, ours is the only thing responding
+        // to a left-click on the panel icon — and it goes straight
+        // to the D-Bus Show().
+        this.connect('button-press-event', (_actor, event) => {
+            if (!this._proxy)
+                return Clutter.EVENT_PROPAGATE;
+            const button = event.get_button?.() ?? 1;
+            if (button !== 1)
+                return Clutter.EVENT_PROPAGATE;
+            this._invoke('Show');
+            return Clutter.EVENT_STOP;
         });
-        this.add_child(this._dotBin);
-
-        // Menu items — built once, labels/visibility refreshed from
-        // _refresh() whenever Status or FavoritesOnly changes.
-        this._showItem = new PopupMenu.PopupMenuItem('Show gsipper');
-        this._showItem.connect('activate', () => this._invoke('Show'));
-        this.menu.addMenuItem(this._showItem);
-
-        this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
-
-        this._connectItem = new PopupMenu.PopupMenuItem('Connect');
-        this._connectItem.connect('activate', () => this._invoke('Connect'));
-        this.menu.addMenuItem(this._connectItem);
-
-        this._disconnectItem = new PopupMenu.PopupMenuItem('Disconnect');
-        this._disconnectItem.connect('activate', () => this._invoke('Disconnect'));
-        this.menu.addMenuItem(this._disconnectItem);
-
-        this._reconnectItem = new PopupMenu.PopupMenuItem('Reconnect');
-        this._reconnectItem.connect('activate', () => this._invoke('Reconnect'));
-        this.menu.addMenuItem(this._reconnectItem);
-
-        this._exitSep = new PopupMenu.PopupSeparatorMenuItem();
-        this.menu.addMenuItem(this._exitSep);
-
-        this._exitItem = new PopupMenu.PopupMenuItem('Exit');
-        this._exitItem.connect('activate', () => this._invoke('Quit'));
-        this.menu.addMenuItem(this._exitItem);
 
         this._proxy = null;
         this._propsChangedId = 0;
-        this._signalSubId = 0;
 
         // Hidden until gsipper actually owns the bus name.
         this.hide();
@@ -153,7 +137,6 @@ class GsipperIndicator extends PanelMenu.Button {
             this._proxy = null;
         }
         this._propsChangedId = 0;
-        this._signalSubId = 0;
         this.hide();
     }
 
@@ -161,39 +144,16 @@ class GsipperIndicator extends PanelMenu.Button {
         if (!this._proxy)
             return;
         const status = this._proxy.Status ?? 'offline';
-        const favoritesOnly = this._proxy.FavoritesOnly ?? false;
         const missed = this._proxy.MissedCalls ?? 0;
 
         for (const c of ['gsipper-online', 'gsipper-connecting', 'gsipper-offline'])
-            this._dot.remove_style_class_name(c);
-        this._dot.add_style_class_name(`gsipper-${status}`);
-
-        // Match the in-app dot menu state-machine:
-        //   favorites_only -> Show + Reconnect only
-        //   online         -> Show / Disconnect+Reconnect / Exit
-        //   connecting|off -> Show / Connect / Exit
-        const isOnline = status === 'online';
-        // GNOME 40+ PopupMenuItems extend St.BoxLayout directly, so
-        // .visible lives on the item itself (no .actor wrapper).
-        if (favoritesOnly) {
-            this._connectItem.visible = false;
-            this._disconnectItem.visible = false;
-            this._reconnectItem.visible = true;
-            this._exitSep.visible = false;
-            this._exitItem.visible = false;
-        } else {
-            this._connectItem.visible = !isOnline;
-            this._disconnectItem.visible = isOnline;
-            this._reconnectItem.visible = isOnline;
-            this._exitSep.visible = true;
-            this._exitItem.visible = true;
-        }
+            this._icon.remove_style_class_name(c);
+        this._icon.add_style_class_name(`gsipper-${status}`);
 
         let label = status.charAt(0).toUpperCase() + status.slice(1);
         if (missed > 0)
             label += `  ·  ${missed} missed`;
-        this._dot.set_accessible_name(`gsipper — ${label}`);
-        this._dotBin.set_accessible_name(`gsipper — ${label}`);
+        this._icon.set_accessible_name(`gsipper — ${label}`);
     }
 
     _invoke(method) {
