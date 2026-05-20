@@ -723,36 +723,23 @@ class MainWindow(_BaseWindow):
     # ------------------------------------------------------------------
 
     def _open_ringin(self, call) -> None:
-        # Always start the ringer + fire the notification — they're
-        # independent of whether the floating popup actually
-        # constructs (it can fail on a hidden window / odd WM state).
+        # The inline in-call view (DialerView + InCallView) is now the
+        # primary incoming-call UI — its [Answer] [Decline] buttons
+        # land in the same handlers the floating popup used to. We
+        # keep only the ringtone + GNOME notification here; the
+        # popup window was a duplicate alert per the user's report
+        # ('show only 1 interface not double').
         peer_display = getattr(call, "peer_display", "") or "Unknown caller"
         try:
             self._ringer.start()
         except Exception:
             logger.exception("ringer start failed")
         self._send_incoming_notification(peer_display)
-
-        if self._ringin_window is not None:
-            return
-        # If the MainWindow is hidden (Start-minimized, Favorites-only
-        # with the X-button-to-tray flow, or any other hide path) the
-        # user wouldn't see the popup; bring the window up so the
-        # popup has somewhere to render and the WM has something to
-        # focus.
+        # Bring the MainWindow forward when it's hidden so the inline
+        # incoming view is visible. Without this, Start-minimized /
+        # Favorites-only users would see only the GNOME notification.
         if not self.is_visible():
             self.set_visible(True)
-        peer_uri = getattr(call, "peer_uri", "") or ""
-        try:
-            win = RinginWindow(parent=self, peer_display=peer_display,
-                               peer_uri=peer_uri)
-            win.connect("answer-requested", self._on_ringin_answer)
-            win.connect("decline-requested", self._on_ringin_decline)
-            self._ringin_window = win
-            win.present()
-        except Exception:
-            logger.exception("ring-in popup failed to open; "
-                             "the in-call view + notification remain")
 
     def _close_ringin(self) -> None:
         win = self._ringin_window

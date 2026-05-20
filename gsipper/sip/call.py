@@ -121,9 +121,15 @@ if HAVE_PJSUA2:
                 # Audio media may have come up during EARLY already;
                 # if so its references are cached on the call and we
                 # can start the recorder now that the call has truly
-                # been answered.
-                if self._cached_call_audio is not None \
-                        and self._cached_mic_audio is not None:
+                # been answered. If they're not cached yet, the
+                # later onCallMediaState (which fires after the
+                # answer / ACK exchange completes) starts the
+                # recorder instead.
+                has_refs = (self._cached_call_audio is not None
+                            and self._cached_mic_audio is not None)
+                logger.info("connected; cached audio refs=%s record_to=%s",
+                            has_refs, self.record_to or "(none)")
+                if has_refs:
                     self._maybe_start_recording(
                         self._cached_call_audio,
                         self._cached_mic_audio,
@@ -177,6 +183,9 @@ if HAVE_PJSUA2:
                     self._cached_mic_audio = mic
                     # Only record once the call is actually answered;
                     # ringing / early-media audio never lands in a WAV.
+                    logger.info("media bridged; state=%s record_to=%s",
+                                self.state,
+                                self.record_to or "(none)")
                     if self.state == STATE_CONNECTED:
                         self._maybe_start_recording(aud, mic)
                 except Exception as exc:
@@ -186,7 +195,13 @@ if HAVE_PJSUA2:
             """Wire both directions to an AudioMediaRecorder. Called
             once per call from onCallMediaState after the audio path is
             up; subsequent media events are ignored."""
-            if not self.record_to or self._recorder_started:
+            if not self.record_to:
+                logger.info("recording skipped: record_to is empty "
+                            "(call_records disabled, ffmpeg missing, "
+                            "or _build_record_path wasn't reached)")
+                return
+            if self._recorder_started:
+                logger.debug("recording already running")
                 return
             import os as _os
             _os.makedirs(_os.path.dirname(self.record_to), exist_ok=True)
