@@ -132,10 +132,10 @@ class SettingsDialog(Adw.PreferencesDialog):
         page.add(group)
 
         # ----- Ringtone selector ------------------------------------
-        # Adw.ComboRow with a "Default" first entry plus every MP3/OGG
-        # bundled under /usr/share/gsipper/ringtones/ (deb layout) or
-        # the source tree's ringtones/ dir (dev runs). The Play button
-        # in the suffix previews ~5s of the current selection.
+        # The group header already carries the "Ringtone" label, so
+        # the row itself is just a dropdown (showing the selected
+        # tone) and a Play button for preview — no redundant title /
+        # subtitle text eating vertical space.
         ring_group = Adw.PreferencesGroup(title="Ringtone")
         self._ringtone_names = [""] + list_bundled_ringtones()
         labels = ["Default"] + [
@@ -143,18 +143,13 @@ class SettingsDialog(Adw.PreferencesDialog):
             for n in self._ringtone_names[1:]
         ]
         model = Gtk.StringList.new(labels)
-        self._row_ringtone = Adw.ComboRow(
-            title="Ringtone",
-            subtitle="Sound played for incoming calls.",
-            model=model,
-        )
-        # Restore previous selection by basename if still present.
+        self._row_dropdown = Gtk.DropDown(model=model, hexpand=True)
+        self._row_dropdown.set_valign(Gtk.Align.CENTER)
         try:
             sel = self._ringtone_names.index(g.ringtone or "")
         except ValueError:
             sel = 0
-        self._row_ringtone.set_selected(sel)
-        ring_group.add(self._row_ringtone)
+        self._row_dropdown.set_selected(sel)
 
         self._preview_ringer: Ringer | None = None
         play_btn = Gtk.Button.new_from_icon_name("media-playback-start-symbolic")
@@ -162,7 +157,15 @@ class SettingsDialog(Adw.PreferencesDialog):
         play_btn.add_css_class("flat")
         play_btn.set_valign(Gtk.Align.CENTER)
         play_btn.connect("clicked", self._on_preview_clicked)
-        self._row_ringtone.add_suffix(play_btn)
+
+        row_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        row_box.set_margin_top(6)
+        row_box.set_margin_bottom(6)
+        row_box.set_margin_start(12)
+        row_box.set_margin_end(12)
+        row_box.append(self._row_dropdown)
+        row_box.append(play_btn)
+        ring_group.add(row_box)
 
         page.add(ring_group)
         self.add(page)
@@ -170,7 +173,7 @@ class SettingsDialog(Adw.PreferencesDialog):
         self.connect("closed", self._on_closed)
 
     def _selected_ringtone(self) -> str:
-        idx = self._row_ringtone.get_selected()
+        idx = self._row_dropdown.get_selected()
         if 0 <= idx < len(self._ringtone_names):
             return self._ringtone_names[idx]
         return ""
