@@ -330,11 +330,45 @@ class ContactsView(Gtk.Box):
         contact.favorite = not contact.favorite
         logger.info("favorite toggled: %s -> %s",
                     contact.name, contact.favorite)
-        # Section the contact lives in changes; full rebuild is the
-        # simplest correct path here, deferred via idle_add so the
-        # menu close animation finishes first.
-        GLib.idle_add(self._rebuild_rows)
+        # Defer past the menu's close animation, then do an
+        # INCREMENTAL move: remove the contact's row from its
+        # current section and insert a fresh one (so its menu
+        # label flips between 'Add to favorites' / 'Remove from
+        # favorites') into the target section at the right sorted
+        # position. _rebuild_rows is O(n) over every Adw.ExpanderRow
+        # — for a list of any size that's a visible UI freeze.
+        GLib.idle_add(self._move_contact_row, contact)
         GLib.idle_add(self._persist_contacts_idle)
+
+    def _move_contact_row(self, contact: Contact) -> bool:
+        # Pull the existing row out of whichever section it's in.
+        self._remove_row_for(contact.id)
+
+        # Rebuild it (the menu label changed) and insert into the
+        # right section, keeping the section sorted by name.
+        row = self._make_row(contact)
+        row._contact = contact  # type: ignore[attr-defined]
+        target = (self._favorites_listbox if contact.favorite
+                  else self._listbox)
+        self._insert_row_sorted(target, row, contact.name)
+
+        # Favorites section visibility follows.
+        any_fav = self._favorites_listbox.get_first_child() is not None
+        self._favorites_expander.set_visible(any_fav)
+        return False  # one-shot idle_add
+
+    @staticmethod
+    def _insert_row_sorted(listbox, row, name: str) -> None:
+        key = (name or "").casefold()
+        pos = 0
+        child = listbox.get_first_child()
+        while child is not None:
+            existing = getattr(child, "_contact", None)
+            if existing is None or (existing.name or "").casefold() > key:
+                break
+            pos += 1
+            child = child.get_next_sibling()
+        listbox.insert(row, pos)
 
     def _open_edit_dialog(self, contact: Contact) -> None:
         from ..dialogs.add_contact_dialog import AddContactDialog
