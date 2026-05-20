@@ -1,3 +1,15 @@
+gsipper (1.3.31-1) unstable; urgency=medium
+
+  * Recent: swap the row's ▶ media-playback-start glyph for a
+    voicemail icon (FontAwesome classic-solid 'voicemail').
+    Shipped as resources/voicemail-symbolic.svg with a
+    currentColor fill so it picks up the theme's foreground
+    automatically. CallsView references it as "voicemail-symbolic"
+    via the icon-theme search path the app already registers
+    against resources/.
+
+ -- pulpoff <noreply@pulpoff.com>  Tue, 20 May 2026 00:00:00 +0000
+
 gsipper (1.3.30-1) unstable; urgency=medium
 
   * Playback dialog tweaks:

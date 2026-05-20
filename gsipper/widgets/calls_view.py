@@ -232,8 +232,13 @@ class CallsView(Gtk.Box):
             )
             row.add_prefix(_direction_icon(record))
             if has_recording:
+                # Custom symbolic from resources/voicemail-symbolic.svg
+                # (FontAwesome's classic-solid 'voicemail' glyph,
+                # currentColor fill). The icon-theme search path is
+                # registered in gsipper.app so set_icon_name picks it
+                # up just like the stock symbolic icons.
                 play_btn = Gtk.Button.new_from_icon_name(
-                    "media-playback-start-symbolic")
+                    "voicemail-symbolic")
                 play_btn.add_css_class("flat")
                 play_btn.set_valign(Gtk.Align.CENTER)
                 play_btn.set_tooltip_text("Play recording")
