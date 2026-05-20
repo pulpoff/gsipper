@@ -1,3 +1,3 @@
 """gsipper — a modern GNOME SIP client."""
 
-__version__ = "1.3.28"
+__version__ = "1.3.29"

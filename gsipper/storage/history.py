@@ -61,6 +61,7 @@ def load_history() -> List[CallRecord]:
                 status=str(d.get("status", "completed")),
                 status_code=int(d.get("status_code", 0)),
                 status_reason=str(d.get("status_reason", "")),
+                recording_path=str(d.get("recording_path", "")),
             ))
         except Exception:
             continue
