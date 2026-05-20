@@ -82,6 +82,9 @@ class MainWindow(_BaseWindow):
         self.dialer = DialerView()
         self.dialer.connect("call-requested", self._on_dial_requested)
         self.dialer.connect("hangup-requested", self._on_hangup_requested)
+        # Re-emitted by InCallView when an incoming-ringing call's
+        # Answer button is tapped; same handler as the RinginWindow.
+        self.dialer.connect("answer-requested", self._on_ringin_answer)
         self.contacts = ContactsView()
         self.contacts.connect("call-requested", self._on_contact_call)
         # Row body click = pre-fill the dialer (no auto-call). Uses the
@@ -674,6 +677,16 @@ class MainWindow(_BaseWindow):
         if state == "incoming":
             self._open_ringin(call)
             self._emit_dbus_incoming(getattr(call, "peer_display", ""))
+            # Also show the in-call view in the Dialer tab so the
+            # user sees a big inline Answer / Decline pair even if
+            # the floating ring-in popup isn't visible (hidden window,
+            # focused other app, etc.). InCallView.set_call_kind(True)
+            # + state="incoming" makes _refresh_buttons reveal the
+            # green Answer button.
+            peer = getattr(call, "peer_display", "") or "—"
+            self.dialer.show_call(peer=peer, state="incoming", incoming=True)
+            if _USE_ADW and hasattr(self, "_stack"):
+                self._stack.set_visible_child_name("dialer")
             return
 
         if state == "ended":
@@ -690,15 +703,18 @@ class MainWindow(_BaseWindow):
                 self._publish_dbus_missed()
             return
 
-        # calling / ringing / connected
-        if call is not None and getattr(call, "incoming", False) and state in ("ringing", "connected"):
-            # We answered an incoming call — tear down the ring-in
-            # popup and ringer; the in-call view takes over.
+        # calling / ringing / connected.
+        incoming = call is not None and getattr(call, "incoming", False)
+        if incoming and state == "connected":
+            # User actually answered — tear down the ring-in popup +
+            # ringer + notification. The in-call view's Answer button
+            # vanishes (handled by InCallView.set_call_kind /
+            # _refresh_buttons), leaving only End.
             self._close_ringin()
             self._ringer.stop()
             self._withdraw_incoming_notification()
         peer = getattr(call, "peer_display", "") or "—"
-        self.dialer.show_call(peer=peer, state=state)
+        self.dialer.show_call(peer=peer, state=state, incoming=incoming)
         if _USE_ADW and hasattr(self, "_stack"):
             self._stack.set_visible_child_name("dialer")
 
@@ -707,24 +723,36 @@ class MainWindow(_BaseWindow):
     # ------------------------------------------------------------------
 
     def _open_ringin(self, call) -> None:
+        # Always start the ringer + fire the notification — they're
+        # independent of whether the floating popup actually
+        # constructs (it can fail on a hidden window / odd WM state).
+        peer_display = getattr(call, "peer_display", "") or "Unknown caller"
+        try:
+            self._ringer.start()
+        except Exception:
+            logger.exception("ringer start failed")
+        self._send_incoming_notification(peer_display)
+
         if self._ringin_window is not None:
             return
         # If the MainWindow is hidden (Start-minimized, Favorites-only
         # with the X-button-to-tray flow, or any other hide path) the
-        # user wouldn't see the ringin popup; bring the window up so
-        # the popup has somewhere to render and the WM has something
-        # to focus.
+        # user wouldn't see the popup; bring the window up so the
+        # popup has somewhere to render and the WM has something to
+        # focus.
         if not self.is_visible():
             self.set_visible(True)
-        peer_display = getattr(call, "peer_display", "") or "Unknown caller"
         peer_uri = getattr(call, "peer_uri", "") or ""
-        win = RinginWindow(parent=self, peer_display=peer_display, peer_uri=peer_uri)
-        win.connect("answer-requested", self._on_ringin_answer)
-        win.connect("decline-requested", self._on_ringin_decline)
-        self._ringin_window = win
-        win.present()
-        self._ringer.start()
-        self._send_incoming_notification(peer_display)
+        try:
+            win = RinginWindow(parent=self, peer_display=peer_display,
+                               peer_uri=peer_uri)
+            win.connect("answer-requested", self._on_ringin_answer)
+            win.connect("decline-requested", self._on_ringin_decline)
+            self._ringin_window = win
+            win.present()
+        except Exception:
+            logger.exception("ring-in popup failed to open; "
+                             "the in-call view + notification remain")
 
     def _close_ringin(self) -> None:
         win = self._ringin_window
