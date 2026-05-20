@@ -1,3 +1,31 @@
+gsipper (1.3.23-1) unstable; urgency=medium
+
+  * The duplicate 'Incoming call' notification (the one without
+    Answer / Decline action buttons) was being fired by the
+    GNOME-Shell extension on the D-Bus IncomingCall signal via a
+    plain Main.notify(). gsipper's own Gio.Notification (with
+    action buttons) is the only incoming alert now:
+      - extension/extension.js no longer subscribes to the
+        IncomingCall signal and the _notifyIncoming() helper
+        is gone.
+      - gsipper.widgets.window stops calling
+        _emit_dbus_incoming() on incoming state so nothing
+        emits the signal in the first place. (The signal still
+        exists on the bus surface for backwards compat;
+        subscribers just won't receive anything.)
+    extension/metadata.json version bumped 4 -> 5 so a
+    'gnome-extensions disable + enable' picks up the new JS.
+  * Incoming-call window behaviour follows MainWindow visibility:
+      - Visible: inline InCallView keeps showing the
+        Answer / Decline buttons; we don't force a present().
+      - Hidden: gsipper stays in the tray and only the GNOME
+        notification appears. Clicking 'Answer' on the
+        notification fires app.answer-incoming -> calls
+        SipEndpoint.answer_active(); clicking the body fires
+        app.show-main and presents the window.
+
+ -- pulpoff <noreply@pulpoff.com>  Tue, 20 May 2026 00:00:00 +0000
+
 gsipper (1.3.22-1) unstable; urgency=medium
 
   * Incoming-call UI is now SINGLE. The floating ring-in popup

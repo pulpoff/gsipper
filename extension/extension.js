@@ -113,10 +113,12 @@ class GsipperIndicator extends PanelMenu.Button {
                     'g-properties-changed',
                     () => this._refresh(),
                 );
-                this._signalSubId = proxy.connectSignal(
-                    'IncomingCall',
-                    (_p, _sender, [peer]) => this._notifyIncoming(peer),
-                );
+                // The IncomingCall D-Bus signal is intentionally NOT
+                // subscribed any more. gsipper itself fires a richer
+                // Gio.Notification with Answer / Decline buttons; the
+                // Main.notify() call we used to do here was a plain
+                // toast without actions and just duplicated the alert.
+                this._signalSubId = 0;
                 this._refresh();
                 this.show();
             },
@@ -153,10 +155,6 @@ class GsipperIndicator extends PanelMenu.Button {
         if (missed > 0)
             label += `  ·  ${missed} missed`;
         this._icon.set_accessible_name(`gsipper — ${label}`);
-    }
-
-    _notifyIncoming(peer) {
-        Main.notify('Incoming call', peer || 'Unknown caller');
     }
 
     _invoke(method) {
