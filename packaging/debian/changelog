@@ -1,3 +1,21 @@
+gsipper (1.3.9-1) unstable; urgency=medium
+
+  * New Settings option: 'Favorites only' (default off). When on,
+    the bottom tab switcher is hidden and the main content swaps
+    to a 2-column grid of quick-dial cards built from contacts
+    flagged favorite. Tapping a card places a call immediately.
+    During an active call the main content swaps back to the
+    DialerView in-call subwidget so the user sees the standard
+    in-call UI; the favourites grid reappears when the call
+    ends. Toggling the setting is live — no restart needed.
+  * Fix pre-existing settings-save bug: window_width /
+    window_height (added in 1.1.0) were not preserved when the
+    Settings dialog wrote the rest of GeneralSettings back to
+    disk — they got reset to their dataclass defaults of 0 on
+    every save. The dialog now passes them through verbatim.
+
+ -- pulpoff <noreply@pulpoff.com>  Tue, 19 May 2026 00:00:00 +0000
+
 gsipper (1.3.8-1) unstable; urgency=medium
 
   * Favourites + collapsible sections in the Contacts view.

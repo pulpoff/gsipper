@@ -166,15 +166,34 @@ class MainWindow(_BaseWindow):
 
         header.set_title_widget(Adw.WindowTitle(title="", subtitle=""))
 
-        switcher_bar = Adw.ViewSwitcherBar()
-        switcher_bar.set_stack(stack)
-        switcher_bar.set_reveal(True)
+        self._switcher_bar = Adw.ViewSwitcherBar()
+        self._switcher_bar.set_stack(stack)
+        self._switcher_bar.set_reveal(True)
+
+        # Favorites-only quick-dial grid. Shares the call-requested
+        # signal flow with Contacts so a card click goes through the
+        # same _on_contact_call -> _on_dial_requested chain.
+        from .favorites_view import FavoritesView
+        self.favorites = FavoritesView()
+        self.favorites.connect("call-requested", self._on_contact_call)
+
+        # Top-level content stack switches between the tabbed view
+        # and the favorites-only quick-dial grid. _apply_favorites_only
+        # picks the visible child based on settings + active call.
+        self._main_stack = Gtk.Stack()
+        self._main_stack.add_named(stack, "tabs")
+        self._main_stack.add_named(self.favorites, "favorites")
+        self._main_stack.set_vexpand(True)
 
         toolbar_view = Adw.ToolbarView()
         toolbar_view.add_top_bar(header)
-        toolbar_view.set_content(stack)
-        toolbar_view.add_bottom_bar(switcher_bar)
+        toolbar_view.set_content(self._main_stack)
+        toolbar_view.add_bottom_bar(self._switcher_bar)
         self.set_content(toolbar_view)
+
+        # Initial mode reflects the persisted setting; later toggles
+        # come from _on_general_saved.
+        self._apply_favorites_only_mode()
 
     def _build_fallback_layout(self, menu_model: Gio.MenuModel) -> None:
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
@@ -259,6 +278,36 @@ class MainWindow(_BaseWindow):
         self._settings.general = general
         save_settings(self._settings)
         self._apply_messages_visibility()
+        self._apply_favorites_only_mode()
+
+    def _apply_favorites_only_mode(self) -> None:
+        """Show / hide the favorites-only quick-dial screen.
+
+        When favorites_only is on and no call is active, the
+        Adw.ViewSwitcherBar at the bottom is collapsed and the main
+        content swaps from the Adw.ViewStack (tabs) to FavoritesView.
+        During an active call we flip back to 'tabs' so the regular
+        in-call view inside DialerView is shown full-screen; the
+        bottom switcher stays hidden in favorites mode either way."""
+        if not _USE_ADW or not hasattr(self, "_main_stack"):
+            return
+        enabled = self._settings.general.favorites_only
+        active = self._sip is not None and self._sip.active_call is not None
+        if enabled:
+            self._switcher_bar.set_reveal(False)
+            if active:
+                # Mid-call: show the DialerView (which is hosting its
+                # in-call subwidget). User isn't choosing tabs here,
+                # but the tabs page is the closest path back to the
+                # in-call UI without re-architecting DialerView.
+                self._main_stack.set_visible_child_name("tabs")
+                self._stack.set_visible_child_name("dialer")
+            else:
+                self.favorites.refresh()
+                self._main_stack.set_visible_child_name("favorites")
+        else:
+            self._switcher_bar.set_reveal(True)
+            self._main_stack.set_visible_child_name("tabs")
 
     def _apply_messages_visibility(self) -> None:
         """Add / remove the Messages tab depending on the
@@ -593,6 +642,10 @@ class MainWindow(_BaseWindow):
     def _on_call_state(self, call, state: str) -> None:
         logger.info("UI call state: %s peer=%s", state,
                     getattr(call, "peer_display", ""))
+
+        # Favorites-only mode swaps the main content based on whether
+        # a call is active. Re-evaluate on every state change.
+        self._apply_favorites_only_mode()
 
         if state == "incoming":
             self._open_ringin(call)

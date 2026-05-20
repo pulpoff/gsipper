@@ -56,6 +56,7 @@ class GeneralSettings:
     run_on_start: bool = False      # write ~/.config/autostart/*.desktop
     call_records: bool = False      # record every call to wav, convert to mp3
     enable_messages: bool = False   # show the Messages tab + SIP IM features
+    favorites_only: bool = False    # tabs hidden, favorites shown as a 2-col grid
     window_width: int = 0           # last size on hide; 0 = use default 360
     window_height: int = 0          # last size on hide; 0 = use default 560
 

@@ -121,17 +121,33 @@ class SettingsDialog(Adw.PreferencesDialog):
         self._row_messages.set_active(g.enable_messages)
         group.add(self._row_messages)
 
+        self._row_favorites_only = Adw.SwitchRow(
+            title="Favorites only",
+            subtitle="Hide the tab bar and show favourite contacts as a 2-column "
+                     "grid of quick-dial cards. Tapping a card places a call. "
+                     "The usual in-call view appears for the duration of the call.",
+        )
+        self._row_favorites_only.set_active(g.favorites_only)
+        group.add(self._row_favorites_only)
+
         page.add(group)
         self.add(page)
 
         self.connect("closed", self._on_closed)
 
     def _on_closed(self, *_args) -> None:
+        # Preserve any GeneralSettings fields that the dialog doesn't
+        # expose (window_width / window_height, etc.) — otherwise
+        # constructing a fresh dataclass here would wipe them back to
+        # their dataclass defaults on every Settings close.
         new = GeneralSettings(
             start_minimized=self._row_minimized.get_active(),
             run_on_start=self._row_autostart.get_active(),
             call_records=self._row_records.get_active(),
             enable_messages=self._row_messages.get_active(),
+            favorites_only=self._row_favorites_only.get_active(),
+            window_width=self._settings.general.window_width,
+            window_height=self._settings.general.window_height,
         )
         # Side-effect: autostart file follows the toggle immediately.
         try:
