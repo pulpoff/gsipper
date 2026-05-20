@@ -23,8 +23,20 @@ class RinginWindow(Adw.Window):
     def __init__(self, parent: Gtk.Window, peer_display: str, peer_uri: str) -> None:
         super().__init__()
         self.set_title("Incoming call")
+        # We do NOT call set_transient_for here on purpose. Mutter /
+        # Wayland tear down a transient window whose parent isn't
+        # mapped — and the MainWindow can be hidden (Favorites-only
+        # mode, Start-minimized, X-button-to-tray). The teardown
+        # immediately emits close-request, which our handler turns
+        # into 'decline-requested' -> hangup(486), all before the
+        # ringin popup is ever visible to the user. Standing on our
+        # own keeps the popup alive regardless of MainWindow state.
+        # We still register with the application (via 'parent') so
+        # the WM groups us correctly and Ctrl+W etc. work.
         if parent is not None:
-            self.set_transient_for(parent)
+            app = parent.get_application()
+            if app is not None:
+                self.set_application(app)
         self.set_modal(False)
         self.set_default_size(380, 320)
         self.set_resizable(False)
