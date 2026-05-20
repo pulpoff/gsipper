@@ -789,11 +789,13 @@ class MainWindow(_BaseWindow):
             return
         self._sip.set_mic_muted(bool(muted))
 
-    def _on_recording_ready(self, _path: str) -> bool:
+    def _on_recording_ready(self, path: str) -> bool:
         # ffmpeg finished writing the MP3 — re-render Recent so the
         # play button shows up next to the row we appended on call
         # end (the file didn't exist on disk then). Returning False
         # tells GLib.idle_add not to repeat.
+        logger.info("recording-ready handler firing; refreshing Recent (%s)",
+                    path)
         try:
             self.calls.refresh()
         except Exception:
