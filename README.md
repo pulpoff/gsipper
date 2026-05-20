@@ -41,6 +41,8 @@ PJSIP's PJSUA2 Python bindings.
 
 - Outgoing / incoming / missed entries with a coloured direction icon
   and human-relative timestamps.
+- When the call's number matches a stored contact, the row's title
+  shows the contact name and the number drops down into the subtitle.
 - Tap a row to drop the number back into the dialer for redial.
 
 **Messaging (SIP IM)**
@@ -139,7 +141,7 @@ python3 -m gsipper
 
 ```sh
 ./build.sh --deb
-sudo apt install ./dist/gsipper_1.3.9_amd64.deb
+sudo apt install ./dist/gsipper_1.3.10_amd64.deb
 sudo gsipper --install-pjsua2     # compile PJSUA2 bindings (one-time)
 ```
 

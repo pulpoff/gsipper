@@ -1,3 +1,17 @@
+gsipper (1.3.10-1) unstable; urgency=medium
+
+  * Recent tab: when a call-history row's peer number matches a
+    stored contact, the row's title now shows the contact name
+    and the number is folded into the subtitle (above the time /
+    duration / status line). Match is digit-suffix based so it
+    survives 'national vs international' and leading '+' / '00'
+    formatting differences between contacts.json and what the
+    SIP server returned. The digits -> name index is built once
+    per refresh() so the row factory doesn't re-load contacts.json
+    on every redraw.
+
+ -- pulpoff <noreply@pulpoff.com>  Tue, 19 May 2026 00:00:00 +0000
+
 gsipper (1.3.9-1) unstable; urgency=medium
 
   * New Settings option: 'Favorites only' (default off). When on,
