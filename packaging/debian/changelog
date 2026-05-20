@@ -1,3 +1,18 @@
+gsipper (1.3.14-1) unstable; urgency=medium
+
+  * Status-dot menu in favorites-only mode is reduced to a single
+    'Reconnect' entry. Disconnect / Connect / Exit are hidden so a
+    wandering tap during a kiosk session can't take the app
+    offline or quit it. Reconnect goes through the existing
+    configure_account path, which also re-enables the account if
+    it had been turned off. The full menu (Connect / Disconnect /
+    Reconnect / Exit) is back as soon as the user turns
+    Favorites-only off in Settings.
+  * MainWindow._apply_favorites_only_mode rebuilds the status
+    menu after every mode change so the toggle is live.
+
+ -- pulpoff <noreply@pulpoff.com>  Tue, 19 May 2026 00:00:00 +0000
+
 gsipper (1.3.13-1) unstable; urgency=medium
 
   * Favorites grid: each card now picks one of eight muted accent

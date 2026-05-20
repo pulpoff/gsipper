@@ -308,6 +308,22 @@ class MainWindow(_BaseWindow):
         else:
             self._switcher_bar.set_reveal(True)
             self._main_stack.set_visible_child_name("tabs")
+        # The status-dot menu's items depend on favorites_only too —
+        # 'Reconnect' only in kiosk mode, full Connect/Disconnect/Exit
+        # set otherwise. Rebuild after every mode change so the
+        # toggle is immediately reflected.
+        self._update_status_menu(self._current_status_state())
+
+    def _current_status_state(self) -> str:
+        """Best-effort: peek at the headerbar dot's css class to
+        figure out the current status string for status-menu
+        rebuilds outside an _on_reg_state callback."""
+        if not hasattr(self, "_status_dot"):
+            return "offline"
+        for s in ("online", "connecting", "offline"):
+            if self._status_dot.has_css_class(s):
+                return s
+        return "offline"
 
     def _apply_messages_visibility(self) -> None:
         """Add / remove the Messages tab depending on the
@@ -441,15 +457,23 @@ class MainWindow(_BaseWindow):
     def _update_status_menu(self, state: str) -> None:
         """Rebuild the dropdown menu shown on the headerbar dot."""
         menu = Gio.Menu()
-        if state == "online":
-            menu.append("Disconnect", "win.disconnect")
+        if self._settings.general.favorites_only:
+            # Kiosk-style favorites-only mode: don't let a wandering
+            # tap on the status dot disconnect or quit. The only
+            # action that makes sense here is 'refresh my
+            # registration' — Reconnect goes through configure_account
+            # which also re-enables the account if it was off.
             menu.append("Reconnect", "win.reconnect")
         else:
-            # 'connecting' and 'offline' both expose Connect — useful
-            # if the user wants to force a fresh REGISTER instead of
-            # waiting out a retry backoff.
-            menu.append("Connect", "win.connect")
-        menu.append("Exit", "win.quit")
+            if state == "online":
+                menu.append("Disconnect", "win.disconnect")
+                menu.append("Reconnect", "win.reconnect")
+            else:
+                # 'connecting' and 'offline' both expose Connect —
+                # useful if the user wants to force a fresh REGISTER
+                # instead of waiting out a retry backoff.
+                menu.append("Connect", "win.connect")
+            menu.append("Exit", "win.quit")
         if hasattr(self, "_status_btn"):
             self._status_btn.set_menu_model(menu)
 
