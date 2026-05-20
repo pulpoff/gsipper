@@ -123,9 +123,7 @@ class SettingsDialog(Adw.PreferencesDialog):
 
         self._row_favorites_only = Adw.SwitchRow(
             title="Favorites only",
-            subtitle="Hide the tab bar and show favourite contacts as a 2-column "
-                     "grid of quick-dial cards. Tapping a card places a call. "
-                     "The usual in-call view appears for the duration of the call.",
+            subtitle="Kids and Seniors safe quick dial mode for Favorite contacts",
         )
         self._row_favorites_only.set_active(g.favorites_only)
         group.add(self._row_favorites_only)
