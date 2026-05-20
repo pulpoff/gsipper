@@ -1,3 +1,21 @@
+gsipper (1.3.20-1) unstable; urgency=medium
+
+  * 1.3.19's transient_for fix wasn't enough — incoming calls
+    still 486'd before the popup appeared. The auto-decline on
+    RinginWindow's close-request signal is now gone entirely.
+    The WM X button just closes the popup; the call keeps
+    ringing until the caller gives up or the user clicks the
+    red Decline button. (The window object isn't kept around
+    past 'ended' state, so a closed popup will also be torn
+    down by _close_ringin on disconnect.)
+  * SipCall.safe_hangup now logs the last 5 stack frames so any
+    rogue 486 firing path is visible from one log line. The
+    next user-side reproduction should pinpoint who's calling
+    it (notification action handler, decline button, second-
+    incoming guard, etc.) without further guesswork.
+
+ -- pulpoff <noreply@pulpoff.com>  Tue, 20 May 2026 00:00:00 +0000
+
 gsipper (1.3.19-1) unstable; urgency=medium
 
   * Incoming calls were silently auto-declining with 486 Busy in

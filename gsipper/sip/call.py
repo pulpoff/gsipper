@@ -261,8 +261,17 @@ if HAVE_PJSUA2:
                 pre_state = f"{info.stateText} ({int(info.state)})"
             except Exception:
                 pass
-            logger.info("hangup() requested: pjsua2_state=%s status_code=%s",
-                        pre_state, status_code or "default")
+            # Stack trace so any unexpected 486 (e.g. an auto-decline
+            # firing from a WM close-request we didn't anticipate)
+            # leaves a clear breadcrumb in the log.
+            import traceback
+            caller = " <- ".join(
+                f"{f.name}:{f.lineno}"
+                for f in traceback.extract_stack()[-6:-1]
+            )
+            logger.info("hangup() requested: pjsua2_state=%s status_code=%s "
+                        "from %s",
+                        pre_state, status_code or "default", caller)
             try:
                 op = pj.CallOpParam()
                 if status_code:
