@@ -1,3 +1,17 @@
+gsipper (1.3.13-1) unstable; urgency=medium
+
+  * Favorites grid: each card now picks one of eight muted accent
+    tints (blue / green / yellow / orange / red / pink / purple /
+    light-blue) so adjacent cards visually differentiate. The
+    colour is stable per contact — derived from a character-sum
+    hash of the contact id — so the same contact always lands on
+    the same tint across launches. Implemented as eight
+    .fav-card-<n> CSS classes overlaid on the existing .card
+    style; alpha-blended so the tints work in both light and
+    dark Adwaita themes.
+
+ -- pulpoff <noreply@pulpoff.com>  Tue, 19 May 2026 00:00:00 +0000
+
 gsipper (1.3.12-1) unstable; urgency=medium
 
   * Dialer: drop the 'Number or sip:user@host' placeholder from

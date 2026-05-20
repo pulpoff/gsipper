@@ -53,6 +53,20 @@
     font-weight: bold;
 }
 
+/* Favorites grid: 8 muted tints chosen so the same contact always
+ * lands on the same colour (stable hash on name), and so adjacent
+ * cards differentiate visually without overwhelming the layout.
+ * Alpha-blended over the underlying Adwaita card background so the
+ * tints work in both light and dark themes. */
+.fav-card-0 { background-color: rgba(53, 132, 228, 0.18); }  /* blue */
+.fav-card-1 { background-color: rgba(46, 194, 126, 0.20); }  /* green */
+.fav-card-2 { background-color: rgba(245, 194, 17, 0.22); }  /* yellow */
+.fav-card-3 { background-color: rgba(229, 165, 10, 0.22); }  /* orange */
+.fav-card-4 { background-color: rgba(192, 28, 40, 0.18); }   /* red */
+.fav-card-5 { background-color: rgba(220, 138, 221, 0.22); } /* pink */
+.fav-card-6 { background-color: rgba(155, 113, 192, 0.22); } /* purple */
+.fav-card-7 { background-color: rgba(98, 160, 234, 0.20); }  /* light blue */
+
 .dialer-number {
     font-size: 20pt;
     padding: 8px 12px;

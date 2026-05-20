@@ -42,6 +42,20 @@ logger = logging.getLogger(__name__)
 # and matches the 'half the window height' brief from the spec when
 # the window is at the default 360x560.
 _CARD_MIN_HEIGHT = 200
+# Number of distinct tints in the favorites palette. Must match the
+# number of '.fav-card-<n>' classes defined in resources/style.css.
+_PALETTE_SIZE = 8
+
+
+def _palette_class(contact: Contact) -> str:
+    """Pick a CSS class name from the favorites palette. Stable across
+    launches — uses a plain character-sum hash of the contact id (or
+    name) so the same contact lands on the same tint every time. We
+    avoid Python's hash() here because it is salt-randomised per
+    process and would shuffle the colours on each app start."""
+    key = contact.id or contact.name or ""
+    bucket = sum(ord(c) for c in key) % _PALETTE_SIZE
+    return f"fav-card-{bucket}"
 
 
 class FavoritesView(Gtk.Box):
@@ -119,8 +133,12 @@ class FavoritesView(Gtk.Box):
         # Whole card is a button so the tap target is the entire
         # tile, not just the label. .card adds a rounded background
         # + subtle shadow that matches Adwaita's status-page tiles.
+        # .fav-card-<n> overlays a stable, muted accent colour
+        # (see resources/style.css) — same contact always lands on
+        # the same tint so the user builds spatial memory.
         card = Gtk.Button()
         card.add_css_class("card")
+        card.add_css_class(_palette_class(contact))
         card.set_hexpand(True)
         card.set_vexpand(True)
         card.set_size_request(-1, _CARD_MIN_HEIGHT)
