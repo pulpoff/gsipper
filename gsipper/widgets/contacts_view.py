@@ -35,9 +35,16 @@ logger = logging.getLogger(__name__)
 
 class ContactsView(Gtk.Box):
     __gsignals__ = {
-        # Fired when the user clicks a contact row; payload is the
-        # SIP URI or raw phone number.
+        # Fired when the user clicks the green call-icon suffix on
+        # a row OR picks an explicit 'Call …' entry from the row
+        # menu — places the call immediately. Payload: SIP URI or
+        # raw phone number.
         "call-requested": (GObject.SignalFlags.RUN_FIRST, None, (str,)),
+        # Fired when the user activates (clicks) the row body
+        # itself — only pre-fills the dialer, does NOT dial. The
+        # user opted into the calling-icon split: name = pre-fill,
+        # icon = dial.
+        "prefill-requested": (GObject.SignalFlags.RUN_FIRST, None, (str,)),
     }
 
     def __init__(self) -> None:
@@ -182,7 +189,10 @@ class ContactsView(Gtk.Box):
             menu_btn.set_menu_model(self._row_menu(contact))
             row.add_suffix(menu_btn)
 
-            row.connect("activated", lambda *_: self._dial(contact))
+            # Row body click = pre-fill the dialer. The user has to
+            # tap the green call-icon suffix (or pick a number from
+            # the row menu) to actually place the call.
+            row.connect("activated", lambda *_: self._prefill(contact))
             return row
 
         # Fallback for vanilla GTK.
@@ -202,8 +212,10 @@ class ContactsView(Gtk.Box):
             sub.add_css_class("caption")
             text.append(sub)
         box.append(text)
+        # Row body click = pre-fill the dialer, not dial. Matches the
+        # Adw path's row.connect("activated", ...) behaviour.
         click = Gtk.GestureClick()
-        click.connect("released", lambda *_: self._dial(contact))
+        click.connect("released", lambda *_: self._prefill(contact))
         box.add_controller(click)
         return box
 
@@ -377,6 +389,13 @@ class ContactsView(Gtk.Box):
             return
         logger.info("dial from contact: %s -> %s", contact.name, target)
         self.emit("call-requested", target)
+
+    def _prefill(self, contact: Contact) -> None:
+        target = contact.primary_target()
+        if not target:
+            return
+        logger.info("prefill dialer from contact: %s -> %s", contact.name, target)
+        self.emit("prefill-requested", target)
 
     # ------------------------------------------------------------------
     # Add + Import

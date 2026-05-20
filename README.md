@@ -77,8 +77,8 @@ PJSIP's PJSUA2 Python bindings.
 - Window → Settings dialog exposes:
   - **Start minimized** — launch hidden in the tray; SIP still
     registers, the dot turns green, ringtone + incoming popup still
-    fire. Re-launching from the app grid or clicking Show in the
-    tray-extension menu restores the window.
+    fire. Re-launching from the app grid or clicking the tray icon
+    restores the window.
   - **Run on start** — writes / removes
     `~/.config/autostart/com.pulpoff.gsipper.desktop` so the app
     auto-launches on login. Combine with "Start minimized" for the
@@ -93,12 +93,12 @@ PJSIP's PJSUA2 Python bindings.
 
 - App-grid entry, `tel:` / `sip:` / `sips:` URI handler, hicolor icon.
 - Window X button hides to the tray; SIP keeps running so incoming
-  calls still ring. Real quit goes through the in-window menu, Ctrl+Q,
-  or the tray-extension's Quit (D-Bus).
+  calls still ring. Real quit goes through the in-window menu or
+  Ctrl+Q.
 - AyatanaAppIndicator tray icon (when available) mirroring the status
   dot.
 - GNOME Shell status-bar extension (`gsipper@pulpoff.com`) for shells
-  45-49, talking to the app over D-Bus.
+  45-49 — single click brings the gsipper window forward via D-Bus.
 - All PJSIP calls run on a dedicated worker thread so the GTK main loop
   never blocks on registration, INVITE/BYE, or `MESSAGE`.
 
@@ -132,7 +132,7 @@ python3 -m gsipper
 
 ```sh
 ./build.sh --deb
-sudo apt install ./dist/gsipper_1.3.6_amd64.deb
+sudo apt install ./dist/gsipper_1.3.7_amd64.deb
 sudo gsipper --install-pjsua2     # compile PJSUA2 bindings (one-time)
 ```
 
