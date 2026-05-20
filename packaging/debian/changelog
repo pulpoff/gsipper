@@ -1,3 +1,21 @@
+gsipper (1.3.26-1) unstable; urgency=medium
+
+  * GNOME-Shell extension: drop the popup menu reintroduced in
+    1.3.25 and go back to single-click-runs-Show(). The dot is
+    now a colour-tinted media-record-symbolic St.Icon (more
+    robust than the St.Widget+background-color approach we tried
+    in 1.3.25 — that one rendered fine for me but silently
+    failed-to-render on the user's Shell). Quick Connect /
+    Disconnect / Reconnect / Exit lives on the in-window dot;
+    the panel icon is just a status-and-show affordance now.
+  * extension/metadata.json version bumped 6 -> 7.
+  * The Connect/Disconnect/Reconnect D-Bus methods stay on the
+    com.pulpoff.gsipper.Status interface so external automation
+    (or a future menu, if we change our minds again) can still
+    drive registration from outside the app.
+
+ -- pulpoff <noreply@pulpoff.com>  Tue, 20 May 2026 00:00:00 +0000
+
 gsipper (1.3.25-1) unstable; urgency=medium
 
   * GNOME-Shell extension parity with the in-app status dot:

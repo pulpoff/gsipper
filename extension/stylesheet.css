@@ -1,30 +1,21 @@
 /* GNOME Shell extension stylesheet for gsipper@pulpoff.com. */
 
-/* Panel slot: matches the visual padding of system-status-icon so
- * the dot lines up with neighbouring icons in the top bar. */
-.gsipper-status-icon {
+/* The dot itself is a symbolic St.Icon (media-record-symbolic),
+ * so we colour it via the standard `color:` property — same way
+ * GNOME tints the other symbolic icons in the top bar. */
+.gsipper-status-dot {
+    icon-size: 12px;
     padding: 0 6px;
 }
 
-/* The coloured dot itself. Background colour is supplied by the
- * .gsipper-online / -connecting / -offline state classes below.
- * Keep size in the 10-12 px range so it reads as a status pip and
- * not a clickable button. */
-.gsipper-status-dot {
-    width: 10px;
-    height: 10px;
-    border-radius: 5px;
-    background-color: #c01c28;
-}
-
 .gsipper-status-dot.gsipper-online {
-    background-color: #2ec27e;   /* GNOME success green */
+    color: #2ec27e;   /* GNOME success green */
 }
 
 .gsipper-status-dot.gsipper-connecting {
-    background-color: #e5a50a;   /* GNOME warning yellow */
+    color: #e5a50a;   /* GNOME warning yellow */
 }
 
 .gsipper-status-dot.gsipper-offline {
-    background-color: #c01c28;   /* GNOME error red */
+    color: #c01c28;   /* GNOME error red */
 }
