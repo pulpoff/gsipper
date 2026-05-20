@@ -51,6 +51,18 @@ class GsipperIndicator extends PanelMenu.Button {
         });
         this.add_child(this._icon);
 
+        // Replace PanelMenu.Button's built-in 'open the popup menu'
+        // behaviour with a direct D-Bus Show() call. We override the
+        // PopupMenu instance methods rather than relying on
+        // vfunc_event alone — PanelMenu.Button connects its own
+        // 'event' handler in super._init, and signal-handler ordering
+        // across GObject reflection isn't guaranteed enough to trust
+        // vfunc_event will always intercept first. Overriding open()
+        // and toggle() turns the menu into a no-op trigger that runs
+        // our Show() handler instead of popping up.
+        this.menu.open = () => this._invoke('Show');
+        this.menu.toggle = () => this._invoke('Show');
+
         // No popup menu — clicking the icon should directly bring
         // the main window forward. The Status / MissedCalls tooltip
         // and the IncomingCall notification remain.
