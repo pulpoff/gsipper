@@ -828,7 +828,15 @@ class SipEndpoint:
                 logger.error("180 Ringing failed: %s", exc)
             self._active_call = call
             # The pjsua2 INCOMING state has already fired internally;
-            # mirror it through our handler so the UI shows the popup.
-            self._on_call_state_internal(call, "incoming")
+            # marshal it through our handler so the UI thread (not
+            # this pjsua2 callback thread) opens RinginWindow, plays
+            # the ringtone and fires the GNOME notification.
+            # Calling _on_call_state_internal directly here would
+            # run GTK / GIO code from the pjsua2 thread, which on
+            # Wayland can silently destroy the just-created window
+            # — and the destruction emits close-request -> our
+            # decline -> hangup(486), which is exactly the bug
+            # the user reported.
+            GLib.idle_add(self._on_call_state_internal, call, "incoming")
         except Exception as exc:
             logger.error("incoming call handling failed: %s", exc)

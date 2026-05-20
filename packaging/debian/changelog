@@ -1,3 +1,33 @@
+gsipper (1.3.19-1) unstable; urgency=medium
+
+  * Incoming calls were silently auto-declining with 486 Busy in
+    favourites-only / start-minimized / hide-to-tray setups. The
+    gsipper log showed our own safe_hangup(status_code=486) firing
+    while pjsua2 was still in EARLY — i.e. before the call could
+    be answered — so the source had to be RinginWindow's
+    close-request signal handler emitting 'decline-requested'
+    without any user click. Root cause: RinginWindow was created
+    with transient_for=MainWindow. When MainWindow is hidden,
+    Mutter / Wayland immediately destroys the transient because
+    its parent isn't mapped; the destruction emits close-request
+    on the way out, and our handler turns that into a decline.
+    Fix: drop set_transient_for entirely. The ringin popup now
+    stands on its own (registered with the app via
+    set_application so the WM groups it correctly), so it stays
+    alive regardless of MainWindow visibility.
+  * Belt-and-suspenders: MainWindow._open_ringin now calls
+    self.set_visible(True) if the window is hidden, so even
+    without the transient_for tear-down the user has somewhere
+    for the WM to focus.
+  * Marshal the 'incoming' state event via GLib.idle_add instead
+    of calling _on_call_state_internal directly from the pjsua2
+    callback thread. The previous direct call ran RinginWindow
+    construction + Gio.Notification dispatch on the wrong thread,
+    which on Wayland was a likely contributor to the silent
+    teardown.
+
+ -- pulpoff <noreply@pulpoff.com>  Tue, 20 May 2026 00:00:00 +0000
+
 gsipper (1.3.18-1) unstable; urgency=medium
 
   * Incoming calls were being auto-rejected with 486 Busy and the

@@ -709,6 +709,13 @@ class MainWindow(_BaseWindow):
     def _open_ringin(self, call) -> None:
         if self._ringin_window is not None:
             return
+        # If the MainWindow is hidden (Start-minimized, Favorites-only
+        # with the X-button-to-tray flow, or any other hide path) the
+        # user wouldn't see the ringin popup; bring the window up so
+        # the popup has somewhere to render and the WM has something
+        # to focus.
+        if not self.is_visible():
+            self.set_visible(True)
         peer_display = getattr(call, "peer_display", "") or "Unknown caller"
         peer_uri = getattr(call, "peer_uri", "") or ""
         win = RinginWindow(parent=self, peer_display=peer_display, peer_uri=peer_uri)
