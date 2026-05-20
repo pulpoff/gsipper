@@ -130,6 +130,17 @@ install -d "$STAGE/usr/share/icons/hicolor/scalable/apps"
 install -m 644 gsipper/resources/gsipper.svg \
     "$STAGE/usr/share/icons/hicolor/scalable/apps/gsipper.svg"
 
+# 3b. Bundled ringtones → /usr/share/gsipper/ringtones/
+# sound.py's resolve_ringtone() looks here first.
+if [ -d "$ROOT_DIR/ringtones" ]; then
+    install -d "$STAGE/usr/share/gsipper/ringtones"
+    for f in "$ROOT_DIR"/ringtones/*.mp3 "$ROOT_DIR"/ringtones/*.ogg \
+             "$ROOT_DIR"/ringtones/*.oga "$ROOT_DIR"/ringtones/*.wav; do
+        [ -f "$f" ] || continue
+        install -m 644 "$f" "$STAGE/usr/share/gsipper/ringtones/"
+    done
+fi
+
 # 4. GNOME-Shell extension, system-wide
 EXT_UUID="gsipper@pulpoff.com"
 install -d "$STAGE/usr/share/gnome-shell/extensions/$EXT_UUID"

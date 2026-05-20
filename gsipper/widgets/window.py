@@ -751,6 +751,7 @@ class MainWindow(_BaseWindow):
         # Ringtone fires in both cases.
         peer_display = getattr(call, "peer_display", "") or "Unknown caller"
         try:
+            self._ringer.set_source(self._settings.general.ringtone)
             self._ringer.start()
         except Exception:
             logger.exception("ringer start failed")

@@ -97,6 +97,11 @@ PJSIP's PJSUA2 Python bindings.
     contacts as a 2-column grid of quick-dial cards. Tapping a card
     places a call; the regular in-call view appears for the duration
     of the call and the grid comes back when it ends. Off by default.
+  - **Ringtone** — pick the sound played for incoming calls. "Default"
+    uses the freedesktop `phone-incoming-call` event via GSound; the
+    other entries are the MP3s bundled under
+    `/usr/share/gsipper/ringtones/`. A small play button beside the
+    dropdown previews the selection for ~5 s.
 
 **Desktop integration**
 
@@ -141,7 +146,7 @@ python3 -m gsipper
 
 ```sh
 ./build.sh --deb
-sudo apt install ./dist/gsipper_1.3.23_amd64.deb
+sudo apt install ./dist/gsipper_1.3.24_amd64.deb
 sudo gsipper --install-pjsua2     # compile PJSUA2 bindings (one-time)
 ```
 
