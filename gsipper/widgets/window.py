@@ -198,6 +198,12 @@ class MainWindow(_BaseWindow):
         # come from _on_general_saved.
         self._apply_favorites_only_mode()
 
+        # Hand the D-Bus status service the same Connect / Disconnect /
+        # Reconnect callbacks the in-app status menu uses, so the
+        # GNOME-Shell extension's popup can drive registration through
+        # the exact same code paths.
+        self._bind_dbus_handlers()
+
     def _build_fallback_layout(self, menu_model: Gio.MenuModel) -> None:
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
         box.append(Gtk.PopoverMenuBar.new_from_model(menu_model))
@@ -280,6 +286,7 @@ class MainWindow(_BaseWindow):
     def _on_general_saved(self, general) -> None:
         self._settings.general = general
         save_settings(self._settings)
+        self._publish_dbus_favorites_only()
         self._apply_messages_visibility()
         self._apply_favorites_only_mode()
 
@@ -817,6 +824,27 @@ class MainWindow(_BaseWindow):
         svc = self._dbus_service()
         if svc is not None:
             svc.set_status(status)
+
+    def _publish_dbus_favorites_only(self) -> None:
+        """Mirror Settings > Favorites only to the extension so it can
+        show the same kiosk-style 'Reconnect only' menu when the app
+        is locked down."""
+        svc = self._dbus_service()
+        if svc is not None:
+            svc.set_favorites_only(self._settings.general.favorites_only)
+
+    def _bind_dbus_handlers(self) -> None:
+        """Hand the StatusService the Connect / Disconnect / Reconnect
+        callbacks so the GNOME-Shell extension can drive registration
+        through the same code paths as the in-app status dot menu."""
+        svc = self._dbus_service()
+        if svc is not None:
+            svc.set_handlers(
+                on_connect=self._action_connect,
+                on_disconnect=self._action_disconnect,
+                on_reconnect=self._action_reconnect,
+            )
+            svc.set_favorites_only(self._settings.general.favorites_only)
 
     def _publish_dbus_missed(self) -> None:
         svc = self._dbus_service()

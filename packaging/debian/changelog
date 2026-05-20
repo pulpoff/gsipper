@@ -1,3 +1,29 @@
+gsipper (1.3.25-1) unstable; urgency=medium
+
+  * GNOME-Shell extension parity with the in-app status dot:
+      - The top-bar icon is now a small coloured dot (green /
+        yellow / red, background-coloured via CSS — St.Widget
+        with .gsipper-status-dot) instead of the phone glyph.
+      - Click opens a PopupMenu matching the in-app menu:
+            normal:     Show gsipper / Disconnect or Connect /
+                        Reconnect / Exit
+            favorites:  Show gsipper / Reconnect   (kiosk mode)
+        Items are shown / hidden by Status + FavoritesOnly props
+        — same state-machine as window._update_status_menu.
+  * com.pulpoff.gsipper.Status gains three new methods —
+    Connect, Disconnect, Reconnect — and one new property,
+    FavoritesOnly. MainWindow wires the methods to the existing
+    _action_connect / _action_disconnect / _action_reconnect
+    handlers via StatusService.set_handlers(), so the extension
+    drives registration through the exact same paths as the
+    in-app status menu (account.enabled re-enable, full
+    configure_account teardown on Reconnect, _user_disconnected
+    latch, etc.).
+  * extension/metadata.json version bumped 5 -> 6 so a
+    'gnome-extensions disable + enable' picks up the new JS / CSS.
+
+ -- pulpoff <noreply@pulpoff.com>  Tue, 20 May 2026 00:00:00 +0000
+
 gsipper (1.3.24-1) unstable; urgency=medium
 
   * Ringtone selection. Window > Settings now exposes a Ringtone
