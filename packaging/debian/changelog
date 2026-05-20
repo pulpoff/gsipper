@@ -1,3 +1,19 @@
+gsipper (1.3.28-1) unstable; urgency=medium
+
+  * Diagnostic and noise fixes for the call-recording flow:
+      - AudDevManager.setSndDev(c, p) doesn't exist on this
+        pjsua2 SWIG build (only the C API has the dual-arg
+        form). Replace with the individual setCaptureDev(-1)
+        / setPlaybackDev(-1) — same intent (use system
+        defaults), no more AttributeError traceback in the
+        log on every onCallMediaState fire.
+      - Log when the recording-ready handler fires (path,
+        refresh status) so we can tell from a single log
+        whether ffmpeg finished AND the UI re-refresh
+        actually happened.
+
+ -- pulpoff <noreply@pulpoff.com>  Tue, 20 May 2026 00:00:00 +0000
+
 gsipper (1.3.27-1) unstable; urgency=medium
 
   * Mic-mute toggle in the in-call pane. A small circular toggle

@@ -167,12 +167,18 @@ if HAVE_PJSUA2:
                     ep = pj.Endpoint.instance()
                     # Restore real capture + playback devices in case
                     # the previous call's _do_release_sound_dev left
-                    # pjsua2 routed to the null device. -1, -1 means
-                    # use the user's system defaults.
+                    # pjsua2 routed to the null device. -1 means use
+                    # the user's system default. pjsua2's Python SWIG
+                    # binding exposes individual setCaptureDev /
+                    # setPlaybackDev — there's no setSndDev(c,p)
+                    # convenience method like in the C API.
+                    mgr = ep.audDevManager()
                     try:
-                        ep.audDevManager().setSndDev(-1, -1)
+                        mgr.setCaptureDev(-1)
+                        mgr.setPlaybackDev(-1)
                     except Exception:
-                        logger.exception("setSndDev failed; relying on PJSUA defaults")
+                        logger.exception("setCaptureDev/setPlaybackDev failed; "
+                                         "relying on PJSUA defaults")
                     mic = ep.audDevManager().getCaptureDevMedia()
                     spk = ep.audDevManager().getPlaybackDevMedia()
                     mic.startTransmit(aud)

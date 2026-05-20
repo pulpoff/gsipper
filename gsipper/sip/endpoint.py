@@ -95,9 +95,14 @@ def _convert_wav_to_mp3(wav_path: str, mp3_path: str,
         logger.info("recording converted: %s", mp3_path)
         if on_done is not None and os.path.exists(mp3_path):
             try:
+                logger.info("recording-ready: scheduling UI refresh for %s",
+                            mp3_path)
                 GLib.idle_add(on_done, mp3_path)
             except Exception:
                 logger.exception("on_done dispatch failed")
+        elif on_done is None:
+            logger.info("recording-ready: no handler registered "
+                        "(MainWindow.set_recording_ready_handler was never called)")
     except Exception:
         logger.exception("ffmpeg invocation failed: %s -> %s", wav_path, mp3_path)
 
