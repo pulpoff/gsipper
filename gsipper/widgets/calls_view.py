@@ -196,7 +196,12 @@ class CallsView(Gtk.Box):
     # ------------------------------------------------------------------
 
     def _redial_target(self, record: CallRecord) -> str:
-        return record.peer_uri or record.peer or ""
+        # Prefer the short display peer (the user-part / number we
+        # already show in the row) over the full SIP URI. Dropping a
+        # raw '"110049" <sip:110049@host>' into the dialer entry was
+        # confusing — the user wants to redial 110049, not edit a
+        # quoted URI. The endpoint adds the domain back at dial time.
+        return record.peer or record.peer_uri or ""
 
     def _open_player(self, path: str) -> None:
         from ..dialogs.playback_dialog import PlaybackDialog
