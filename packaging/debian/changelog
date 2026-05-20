@@ -1,3 +1,20 @@
+gsipper (1.3.8-1) unstable; urgency=medium
+
+  * Favourites + collapsible sections in the Contacts view.
+    Contact.favorite (bool, default False) lands as a new field
+    on the Contact dataclass and persists in contacts.json.
+  * Row menu rewritten: the per-number 'Call <number>' entries
+    at the top are gone (the row's green call icon + the dialer
+    cover that path). The menu now leads with 'Add to favorites'
+    that flips to 'Remove from favorites' once the contact is
+    starred, followed by Edit / Delete.
+  * Contacts list is split into two Gtk.Expander sections
+    sharing one search field: 'Favorites' (hidden when no
+    contact is starred) above 'Contacts'. Both expanded by
+    default; click the section header to collapse / expand.
+
+ -- pulpoff <noreply@pulpoff.com>  Tue, 19 May 2026 00:00:00 +0000
+
 gsipper (1.3.7-1) unstable; urgency=medium
 
   * GNOME-Shell extension: no more popup menu. A single click on

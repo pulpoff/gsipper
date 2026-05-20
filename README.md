@@ -27,12 +27,15 @@ PJSIP's PJSUA2 Python bindings.
 
 **Contacts**
 
-- Per-contact list with search, multi-number entries (mobile / work /
-  home / …) and per-number Call menu items.
-- Edit and Delete from the row menu, with a confirmation dialog on
-  Delete.
+- Per-contact list with search and multi-number entries (mobile / work /
+  home / …). Two collapsible sections — **Favorites** (visible only
+  when at least one contact is starred) above **Contacts** — share
+  the same search.
+- Row menu: Add to / Remove from favorites, Edit, Delete (with a
+  confirmation dialog).
+- Click the row body to pre-fill the dialer; tap the row's green call
+  icon to dial immediately.
 - Import from vCard (`.vcf`) or Google CSV.
-- Click-to-call straight from a contact row.
 
 **Call history**
 
@@ -132,7 +135,7 @@ python3 -m gsipper
 
 ```sh
 ./build.sh --deb
-sudo apt install ./dist/gsipper_1.3.7_amd64.deb
+sudo apt install ./dist/gsipper_1.3.8_amd64.deb
 sudo gsipper --install-pjsua2     # compile PJSUA2 bindings (one-time)
 ```
 

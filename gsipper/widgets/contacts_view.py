@@ -56,9 +56,10 @@ class ContactsView(Gtk.Box):
         # GAction group exposing edit/delete/dial-by-index for menu rows.
         self._action_group = Gio.SimpleActionGroup()
         for name, handler in (
-            ("dial",   self._on_dial_action),
-            ("edit",   self._on_edit_action),
-            ("delete", self._on_delete_action),
+            ("dial",     self._on_dial_action),
+            ("edit",     self._on_edit_action),
+            ("delete",   self._on_delete_action),
+            ("favorite", self._on_favorite_action),
         ):
             action = Gio.SimpleAction.new(name, GLib.VariantType.new("s"))
             action.connect("activate", handler)
@@ -105,13 +106,35 @@ class ContactsView(Gtk.Box):
             self._empty.add_css_class("dim-label")
         self._stack.add_named(self._empty, "empty")
 
+        # Two collapsible sections: Favorites (visible only when at
+        # least one contact has favorite=True) and Contacts.
+        # Gtk.Expander is the standard collapsible-section widget.
+        sections = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4,
+                           margin_top=4, margin_bottom=4)
+
+        self._favorites_listbox = Gtk.ListBox()
+        self._favorites_listbox.set_selection_mode(Gtk.SelectionMode.NONE)
+        self._favorites_listbox.add_css_class("navigation-sidebar")
+        self._favorites_listbox.set_filter_func(self._row_filter)
+        self._favorites_expander = Gtk.Expander(label="Favorites",
+                                                expanded=True)
+        self._favorites_expander.add_css_class("heading")
+        self._favorites_expander.set_child(self._favorites_listbox)
+        sections.append(self._favorites_expander)
+
         self._listbox = Gtk.ListBox()
         self._listbox.set_selection_mode(Gtk.SelectionMode.NONE)
         self._listbox.add_css_class("navigation-sidebar")
         self._listbox.set_filter_func(self._row_filter)
+        self._contacts_expander = Gtk.Expander(label="Contacts",
+                                               expanded=True)
+        self._contacts_expander.add_css_class("heading")
+        self._contacts_expander.set_child(self._listbox)
+        sections.append(self._contacts_expander)
+
         scrolled = Gtk.ScrolledWindow()
         scrolled.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
-        scrolled.set_child(self._listbox)
+        scrolled.set_child(sections)
         scrolled.set_vexpand(True)
         self._stack.add_named(scrolled, "list")
 
@@ -126,6 +149,7 @@ class ContactsView(Gtk.Box):
     def _on_search_changed(self, entry: Gtk.SearchEntry) -> None:
         self._query = entry.get_text().strip()
         self._listbox.invalidate_filter()
+        self._favorites_listbox.invalidate_filter()
 
     def _row_filter(self, row) -> bool:
         contact = getattr(row, "_contact", None)
@@ -138,21 +162,33 @@ class ContactsView(Gtk.Box):
     # ------------------------------------------------------------------
 
     def _rebuild_rows(self) -> None:
-        child = self._listbox.get_first_child()
-        while child is not None:
-            nxt = child.get_next_sibling()
-            self._listbox.remove(child)
-            child = nxt
+        for box in (self._favorites_listbox, self._listbox):
+            child = box.get_first_child()
+            while child is not None:
+                nxt = child.get_next_sibling()
+                box.remove(child)
+                child = nxt
 
         if not self._contacts:
             self._stack.set_visible_child_name("empty")
             return
 
-        # Stable sort by name.
+        # Stable sort by name; favorites first into the top section,
+        # the rest into the bottom section.
+        any_favorites = False
         for contact in sorted(self._contacts, key=lambda c: c.name.casefold()):
             row = self._make_row(contact)
             row._contact = contact  # type: ignore[attr-defined]
-            self._listbox.append(row)
+            if contact.favorite:
+                self._favorites_listbox.append(row)
+                any_favorites = True
+            else:
+                self._listbox.append(row)
+
+        # Favorites section is only shown when at least one contact is
+        # actually favourited — otherwise the empty 'Favorites' header
+        # is just visual noise.
+        self._favorites_expander.set_visible(any_favorites)
         self._stack.set_visible_child_name("list")
 
     def _make_row(self, contact: Contact):
@@ -221,21 +257,21 @@ class ContactsView(Gtk.Box):
 
     def _row_menu(self, contact: Contact) -> Gio.Menu:
         menu = Gio.Menu()
-        # If a contact has multiple numbers, list them all so the user
-        # can pick which to dial. The "id|index" target lets the dial
-        # action find the contact and pick a specific phone.
-        for idx, phone in enumerate(contact.phones[:5]):
-            label = phone.get("label") or "phone"
-            number = phone.get("number") or ""
-            if not number:
-                continue
-            item = Gio.MenuItem.new(f"Call {label}: {number}", None)
-            item.set_action_and_target_value(
-                "contacts.dial",
-                GLib.Variant.new_string(f"{contact.id}|{idx}"),
-            )
-            menu.append_item(item)
 
+        # Top item: favourite toggle. Label flips depending on the
+        # current state so it reads as a single intent rather than a
+        # checkbox-on-an-overflow-menu.
+        fav_section = Gio.Menu()
+        fav_label = ("Remove from favorites" if contact.favorite
+                     else "Add to favorites")
+        fav = Gio.MenuItem.new(fav_label, None)
+        fav.set_action_and_target_value(
+            "contacts.favorite", GLib.Variant.new_string(contact.id))
+        fav_section.append_item(fav)
+        menu.append_section(None, fav_section)
+
+        # Edit / Delete in their own section so the favorite entry
+        # gets a visual separator above them.
         edit_section = Gio.Menu()
         edit = Gio.MenuItem.new("Edit…", None)
         edit.set_action_and_target_value(
@@ -286,6 +322,19 @@ class ContactsView(Gtk.Box):
         if contact is None:
             return
         self._confirm_delete(contact)
+
+    def _on_favorite_action(self, _action, param) -> None:
+        contact = self._find(param.get_string())
+        if contact is None:
+            return
+        contact.favorite = not contact.favorite
+        logger.info("favorite toggled: %s -> %s",
+                    contact.name, contact.favorite)
+        # Section the contact lives in changes; full rebuild is the
+        # simplest correct path here, deferred via idle_add so the
+        # menu close animation finishes first.
+        GLib.idle_add(self._rebuild_rows)
+        GLib.idle_add(self._persist_contacts_idle)
 
     def _open_edit_dialog(self, contact: Contact) -> None:
         from ..dialogs.add_contact_dialog import AddContactDialog
@@ -363,14 +412,20 @@ class ContactsView(Gtk.Box):
         GLib.idle_add(self._persist_contacts_idle)
 
     def _remove_row_for(self, contact_id: str) -> None:
-        child = self._listbox.get_first_child()
-        while child is not None:
-            nxt = child.get_next_sibling()
-            row_contact = getattr(child, "_contact", None)
-            if row_contact is not None and row_contact.id == contact_id:
-                self._listbox.remove(child)
-                return
-            child = nxt
+        # The contact may live in either section — favourites OR
+        # the main Contacts list — depending on its favorite flag.
+        for box in (self._favorites_listbox, self._listbox):
+            child = box.get_first_child()
+            while child is not None:
+                nxt = child.get_next_sibling()
+                row_contact = getattr(child, "_contact", None)
+                if row_contact is not None and row_contact.id == contact_id:
+                    box.remove(child)
+                    return
+                child = nxt
+        # Favorites section visibility may need to follow the removal.
+        if self._favorites_listbox.get_first_child() is None:
+            self._favorites_expander.set_visible(False)
 
     def _persist_contacts_idle(self) -> bool:
         try:

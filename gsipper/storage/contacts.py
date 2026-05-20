@@ -25,6 +25,7 @@ class Contact:
     sip_uri: str = ""
     organization: str = ""
     notes: str = ""
+    favorite: bool = False
 
     def primary_target(self) -> str:
         """The string we hand to SipEndpoint.make_call when the row is clicked."""
@@ -72,6 +73,7 @@ def _from_dict(d: dict) -> Optional[Contact]:
             sip_uri=str(d.get("sip_uri", "")),
             organization=str(d.get("organization", "")),
             notes=str(d.get("notes", "")),
+            favorite=bool(d.get("favorite", False)),
         )
     except Exception:
         return None
