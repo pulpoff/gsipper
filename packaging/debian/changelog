@@ -1,3 +1,22 @@
+gsipper (1.3.30-1) unstable; urgency=medium
+
+  * Playback dialog tweaks:
+      - Drop the separate Pause button. The Play button itself is
+        now the toggle: while playing it shows a yellow pause
+        glyph (.warning); while paused or stopped it's the blue
+        play glyph (.suggested-action). Clicking flips state +
+        colour + icon in one go.
+      - New red trashcan button (.destructive-action) to the
+        right of Stop. Clicking deletes the MP3 from disk
+        immediately — no confirmation prompt — clears the
+        recording_path on every matching history row (so the ▶
+        button in Recent vanishes), refreshes CallsView via an
+        on_deleted callback, and closes the dialog.
+      - storage.history.clear_recording_path() helper backs the
+        history-side wipe.
+
+ -- pulpoff <noreply@pulpoff.com>  Tue, 20 May 2026 00:00:00 +0000
+
 gsipper (1.3.29-1) unstable; urgency=medium
 
   * storage/history.load_history(): include recording_path when

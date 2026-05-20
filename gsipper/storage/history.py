@@ -82,3 +82,21 @@ def append_call(record: CallRecord) -> List[CallRecord]:
     records.insert(0, record)
     save_history(records)
     return records
+
+
+def clear_recording_path(path: str) -> bool:
+    """Drop the recording_path on every history row that points at
+    `path`. Used by the playback dialog's delete button so the row
+    in Recent loses its ▶ as soon as the file is gone. Returns True
+    if any row was updated."""
+    if not path:
+        return False
+    records = load_history()
+    changed = False
+    for r in records:
+        if r.recording_path == path:
+            r.recording_path = ""
+            changed = True
+    if changed:
+        save_history(records)
+    return changed

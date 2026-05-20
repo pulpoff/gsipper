@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import logging
 import os
-from typing import Optional
+from typing import Callable, Optional
 
 import gi
 
@@ -36,7 +36,8 @@ def _fmt(seconds: float) -> str:
 
 
 class PlaybackDialog(Adw.Window):
-    def __init__(self, parent: Gtk.Window, path: str) -> None:
+    def __init__(self, parent: Gtk.Window, path: str,
+                 on_deleted: Optional["Callable[[], None]"] = None) -> None:
         super().__init__()
         self.set_title(os.path.basename(path))
         self.set_transient_for(parent)
@@ -44,10 +45,12 @@ class PlaybackDialog(Adw.Window):
         self.set_default_size(420, 160)
 
         self._path = path
+        self._on_deleted = on_deleted
         self._playbin: Optional[Gst.Element] = None
         self._duration_ns = 0
         self._tick_id = 0
         self._scale_grabbed = False
+        self._is_playing = False
 
         header = Adw.HeaderBar()
         body = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12,
@@ -84,21 +87,26 @@ class PlaybackDialog(Adw.Window):
         line.append(self._total_lbl)
         body.append(line)
 
-        # Transport row: play / pause / stop
+        # Transport row: play/pause toggle + stop + delete. The
+        # play button doubles as pause — its icon flips between
+        # media-playback-start / media-playback-pause depending on
+        # the playbin state, no separate pause button needed.
         transport = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL,
                             spacing=8, halign=Gtk.Align.CENTER)
         self._btn_play = Gtk.Button.new_from_icon_name("media-playback-start-symbolic")
-        self._btn_pause = Gtk.Button.new_from_icon_name("media-playback-pause-symbolic")
         self._btn_stop = Gtk.Button.new_from_icon_name("media-playback-stop-symbolic")
-        for b in (self._btn_play, self._btn_pause, self._btn_stop):
+        self._btn_delete = Gtk.Button.new_from_icon_name("user-trash-symbolic")
+        self._btn_delete.set_tooltip_text("Delete recording")
+        self._btn_delete.add_css_class("destructive-action")
+        for b in (self._btn_play, self._btn_stop, self._btn_delete):
             b.set_size_request(48, 40)
         self._btn_play.add_css_class("suggested-action")
-        self._btn_play.connect("clicked", lambda *_: self._set_state(Gst.State.PLAYING))
-        self._btn_pause.connect("clicked", lambda *_: self._set_state(Gst.State.PAUSED))
+        self._btn_play.connect("clicked", self._on_play_pause)
         self._btn_stop.connect("clicked", lambda *_: self._stop())
+        self._btn_delete.connect("clicked", lambda *_: self._delete())
         transport.append(self._btn_play)
-        transport.append(self._btn_pause)
         transport.append(self._btn_stop)
+        transport.append(self._btn_delete)
         body.append(transport)
 
         # GStreamer setup
@@ -134,10 +142,39 @@ class PlaybackDialog(Adw.Window):
         if self._playbin is None:
             return
         self._playbin.set_state(state)
+        self._is_playing = (state == Gst.State.PLAYING)
+        self._refresh_play_button()
         if state == Gst.State.PLAYING and self._tick_id == 0:
             # 2 Hz is fine for the elapsed-time label + slider; faster
             # ticks were burning CPU without a visible UX gain.
             self._tick_id = GLib.timeout_add(500, self._tick)
+
+    def _refresh_play_button(self) -> None:
+        """Sync the play/pause toggle's icon + colour to playbin state.
+        Playing = yellow pause-glyph (".warning"); paused / stopped =
+        blue play-glyph (".suggested-action"). Adwaita ships both
+        accent classes, so we just swap which one is attached."""
+        if self._is_playing:
+            self._btn_play.set_icon_name("media-playback-pause-symbolic")
+            self._btn_play.set_tooltip_text("Pause")
+            self._btn_play.remove_css_class("suggested-action")
+            self._btn_play.add_css_class("warning")
+        else:
+            self._btn_play.set_icon_name("media-playback-start-symbolic")
+            self._btn_play.set_tooltip_text("Play")
+            self._btn_play.remove_css_class("warning")
+            self._btn_play.add_css_class("suggested-action")
+
+    def _on_play_pause(self, *_args) -> None:
+        # Single button, two behaviours: toggle between PLAYING and
+        # PAUSED. The colour + icon flip via _refresh_play_button in
+        # _set_state.
+        if self._playbin is None:
+            return
+        if self._is_playing:
+            self._set_state(Gst.State.PAUSED)
+        else:
+            self._set_state(Gst.State.PLAYING)
 
     def _stop(self) -> None:
         if self._playbin is not None:
@@ -147,6 +184,34 @@ class PlaybackDialog(Adw.Window):
             self._tick_id = 0
         self._scale.set_value(0)
         self._elapsed_lbl.set_text("0:00")
+        self._is_playing = False
+        self._refresh_play_button()
+
+    def _delete(self) -> None:
+        # No confirmation per the user's request — clicking the trash
+        # button immediately unlinks the MP3, clears recording_path
+        # on any history row pointing at it (so Recent loses the ▶
+        # button), notifies the caller so they can refresh, and
+        # closes the dialog.
+        self._stop()
+        try:
+            os.unlink(self._path)
+            logger.info("recording deleted: %s", self._path)
+        except FileNotFoundError:
+            pass
+        except OSError:
+            logger.exception("recording delete failed: %s", self._path)
+        try:
+            from ..storage.history import clear_recording_path
+            clear_recording_path(self._path)
+        except Exception:
+            logger.exception("history clear_recording_path failed")
+        if self._on_deleted is not None:
+            try:
+                self._on_deleted()
+            except Exception:
+                logger.exception("on_deleted callback raised")
+        self.close()
 
     # ----------------------------------------------------------------------
     # Timeline
@@ -204,7 +269,9 @@ class PlaybackDialog(Adw.Window):
         self._set_error(f"Playback error: {err.message}")
 
     def _set_error(self, text: str) -> None:
-        for b in (self._btn_play, self._btn_pause, self._btn_stop):
+        # Keep the delete button enabled even on a load error — the
+        # user might want to clean a bad recording out of Recent.
+        for b in (self._btn_play, self._btn_stop):
             b.set_sensitive(False)
         self._scale.set_sensitive(False)
         self._total_lbl.set_text("--:--")

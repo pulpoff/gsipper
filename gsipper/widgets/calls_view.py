@@ -205,7 +205,11 @@ class CallsView(Gtk.Box):
 
     def _open_player(self, path: str) -> None:
         from ..dialogs.playback_dialog import PlaybackDialog
-        PlaybackDialog(parent=self.get_root(), path=path).present()
+        PlaybackDialog(
+            parent=self.get_root(),
+            path=path,
+            on_deleted=self.refresh,
+        ).present()
 
     def _build_row(self, record: CallRecord):
         has_recording = bool(record.recording_path) and \
