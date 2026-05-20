@@ -7,11 +7,16 @@ remote cancels (handled by the window controller calling .dismiss()).
 
 from __future__ import annotations
 
+import logging
+
 import gi
 
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 from gi.repository import Adw, GObject, Gtk  # noqa: E402
+
+
+logger = logging.getLogger(__name__)
 
 
 class RinginWindow(Adw.Window):
@@ -103,8 +108,18 @@ class RinginWindow(Adw.Window):
         toolbar.set_content(body)
         self.set_content(toolbar)
 
-        # Closing the window with the WM = decline.
-        self.connect("close-request", lambda *_: (self.emit("decline-requested"), False)[1])
+        # Do NOT auto-decline on close-request. On Wayland / Mutter,
+        # a hidden-MainWindow + transient_for combination used to
+        # synthesise close-request right after present(), which our
+        # 'X = decline' handler turned into hangup(486) before the
+        # user could see the popup. The transient_for fix already
+        # solved that, but we leave the decline path button-only as
+        # belt-and-suspenders. The WM X button just closes the
+        # popup; if the user wants to actively reject the call
+        # they tap the red Decline button.
+        self.connect("close-request",
+                     lambda *_: (logger.info("ringin close-request (no auto-decline)"),
+                                 False)[1])
 
     def dismiss(self) -> None:
         """Called by the controller when the remote cancels."""
