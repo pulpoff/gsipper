@@ -1,3 +1,19 @@
+gsipper (1.3.32-1) unstable; urgency=medium
+
+  * _build_dial_uri now strips formatting characters (spaces,
+    dashes, parens, dots) from phone-number dial targets before
+    pasting them into the user-part of the SIP URI. Dialling a
+    contact stored as '+49 5254 9306791' used to produce
+    'sip:0049 5254 9306791@callagent.pro' — pjsua2's
+    Call_makeCall raises pjsua2.Error on unescaped whitespace in
+    the URI. Now: keep digits + '+' / '*' / '#', then apply the
+    '+' -> '00' E.164 transform as before, so the same contact
+    dials as 'sip:004952549306791@callagent.pro'. sip: / sips: /
+    tel: URIs pass through untouched (user knows what they're
+    doing).
+
+ -- pulpoff <noreply@pulpoff.com>  Tue, 20 May 2026 00:00:00 +0000
+
 gsipper (1.3.31-1) unstable; urgency=medium
 
   * Recent: swap the row's ▶ media-playback-start glyph for a

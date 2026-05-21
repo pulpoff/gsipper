@@ -8,6 +8,7 @@ Contacts, Calls (history) and Messages — using native GNOME widgets
 from __future__ import annotations
 
 import logging
+import re
 
 import gi
 
@@ -888,14 +889,21 @@ class MainWindow(_BaseWindow):
             self._publish_dbus_missed()
 
     def _build_dial_uri(self, target: str) -> str:
-        target = target.strip()
+        target = (target or "").strip()
+        if target.startswith(("sip:", "sips:", "tel:")):
+            return target
+        # Phone numbers in contacts often carry spaces, dashes,
+        # parentheses or dots ('+49 5254 9306791', '+1 (415) 555-0102').
+        # The user-part of a SIP URI can't contain unescaped whitespace
+        # — pjsua2 raises Call_makeCall(pjsua2.Error) — so reduce the
+        # dial target to digits, plus '+' / '*' / '#' (DTMF-ish chars
+        # that survive into the user-part).
+        target = re.sub(r"[^\d+*#]", "", target)
         # Provider-side trunks generally strip '+' from E.164 numbers;
         # we translate to the international access prefix at dial time.
         # Contacts and call history still display the original '+'.
         if target.startswith("+"):
             target = "00" + target[1:]
-        if target.startswith(("sip:", "sips:", "tel:")):
-            return target
         a = self._settings.account
         domain = a.domain or a.server
         if not domain:
