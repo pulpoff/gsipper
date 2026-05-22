@@ -1,3 +1,31 @@
+gsipper (1.3.33-1) unstable; urgency=medium
+
+  * Stop showing the 'gsipper is ready' notification when the
+    user clicks the panel icon / app-grid icon after the window
+    was hidden to tray. Two-sided fix:
+      - Extension: drop the custom Show() D-Bus method call,
+        route the panel click through the standard
+        org.freedesktop.Application.Activate D-Bus interface
+        (auto-exposed by GApplication). gnome-shell injects an
+        xdg-activation token into the call's platform_data,
+        which GApplication then passes to GTK as part of the
+        activate signal — so present() raises the window
+        without the compositor treating it as focus-stealing.
+        Falls back to the custom Show() if Activate errors out.
+      - App: extract activation-token / desktop-startup-id
+        from the command-line signal's platform_data and feed
+        it into Gdk.Display.set_startup_notification_id +
+        XDG_ACTIVATION_TOKEN environment, so app-grid launches
+        (which always go through HANDLES_COMMAND_LINE) get the
+        same treatment.
+    do_activate is also smarter about re-activations now:
+    only honour 'Start minimized' the first time the window
+    is built; subsequent activations always present the
+    window (the user is explicitly asking it to come back).
+    extension/metadata.json bumped 7 -> 8.
+
+ -- pulpoff <noreply@pulpoff.com>  Tue, 20 May 2026 00:00:00 +0000
+
 gsipper (1.3.32-1) unstable; urgency=medium
 
   * _build_dial_uri now strips formatting characters (spaces,
