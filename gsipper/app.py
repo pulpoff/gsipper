@@ -25,7 +25,7 @@ try:
 except (ValueError, ImportError):
     pass
 
-from gi.repository import Gdk, Gio, Gtk  # noqa: E402
+from gi.repository import Gdk, Gio, GLib, Gtk  # noqa: E402
 
 from . import log as gslog
 from .dbus import StatusService
@@ -107,16 +107,33 @@ class GsipperApp(_BaseApp):
         return self._status_service
 
     def do_activate(self) -> None:
-        """Initial activation. Honour Settings > Start minimized: build
-        the window (so SIP registers and the tray icon appears) but
-        keep it hidden until the user re-launches gsipper or clicks
-        Show on the tray-extension menu."""
+        """Activation handler.
+
+        Two callers:
+
+        - First-instance launch with no args: GApplication emits
+          activate after startup. Honour Settings > Start minimized
+          — build the window so SIP registers + the tray icon
+          appears, but keep it hidden until the user does something.
+
+        - org.freedesktop.Application.Activate D-Bus call (the
+          GNOME-Shell extension's panel-icon click, or any other
+          launcher hitting the app a second time). The window
+          already exists, the user is asking us to come forward.
+          GTK4's Gtk.Application picks up the xdg-activation token
+          from the D-Bus platform_data internally, so a plain
+          present() here brings the window up directly without
+          tripping the compositor's focus-stealing prevention (no
+          more 'gsipper is ready' notification)."""
+        first_activation = self._window is None
         win = self._ensure_window()
-        from .storage.settings import load_settings
-        if load_settings().general.start_minimized:
-            win.set_visible(False)
-        else:
-            win.present()
+        if first_activation:
+            from .storage.settings import load_settings
+            if load_settings().general.start_minimized:
+                win.set_visible(False)
+                return
+        win.set_visible(True)
+        win.present()
 
     def do_shutdown(self) -> None:
         """Run on real app quit (win.quit / Ctrl+Q / D-Bus Quit). The
@@ -130,6 +147,39 @@ class GsipperApp(_BaseApp):
         except Exception:
             logging.getLogger(__name__).exception("SIP shutdown raised")
         _BaseApp.do_shutdown(self)
+
+    def _apply_activation_token(self, window: MainWindow,
+                                platform_data: "GLib.Variant | None") -> None:
+        """Plumb the launching client's xdg-activation token (Wayland)
+        or desktop-startup-id (X11) into GDK before we present the
+        window. Without it, a present() call after a hide-to-tray
+        is treated as focus-stealing on Wayland and the compositor
+        falls back to the 'gsipper is ready' notification instead of
+        raising the window. With it, the window comes forward
+        directly — same UX as every other GTK app."""
+        if platform_data is None:
+            return
+        token_variant = (
+            platform_data.lookup_value("activation-token", GLib.VariantType("s"))
+            or platform_data.lookup_value("desktop-startup-id",
+                                          GLib.VariantType("s"))
+        )
+        if token_variant is None:
+            return
+        token = token_variant.get_string()
+        if not token:
+            return
+        # GTK4 reads XDG_ACTIVATION_TOKEN on next present() and forwards
+        # it to the compositor (xdg_activation_v1).
+        os.environ["XDG_ACTIVATION_TOKEN"] = token
+        display = window.get_display() or Gdk.Display.get_default()
+        if display is not None:
+            try:
+                # set_startup_notification_id covers X11 + Wayland in
+                # GTK4 (handles both protocols under the hood).
+                display.set_startup_notification_id(token)
+            except Exception:
+                pass
 
     def _on_command_line(self, app, cmdline) -> int:
         args = cmdline.get_arguments()
@@ -157,6 +207,12 @@ class GsipperApp(_BaseApp):
                 # the tray icon + GNOME-Shell extension are the only UI.
                 return 0
 
+        try:
+            self._apply_activation_token(window, cmdline.get_platform_data())
+        except Exception:
+            logging.getLogger(__name__).exception(
+                "applying activation token failed")
+        window.set_visible(True)
         window.present()
         return 0
 

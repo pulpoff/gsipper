@@ -18,6 +18,7 @@
 
 import Clutter from 'gi://Clutter';
 import GObject from 'gi://GObject';
+import GLib from 'gi://GLib';
 import St from 'gi://St';
 import Gio from 'gi://Gio';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
@@ -80,15 +81,19 @@ class GsipperIndicator extends PanelMenu.Button {
         // Direct click handler. button-press-event fires AFTER the
         // parent's 'event' signal, but since the parent does nothing
         // when this.menu is null, ours is the only thing responding
-        // to a left-click on the panel icon — and it goes straight
-        // to the D-Bus Show().
+        // to a left-click on the panel icon. We call the standard
+        // org.freedesktop.Application.Activate() (auto-exposed by
+        // GApplication) rather than our own Show() so gnome-shell
+        // injects an xdg-activation token into platform_data — the
+        // app picks it up and present()s the window without
+        // tripping the compositor's focus-stealing prevention,
+        // which is what was producing the 'gsipper is ready'
+        // notification instead of just raising the window.
         this.connect('button-press-event', (_actor, event) => {
-            if (!this._proxy)
-                return Clutter.EVENT_PROPAGATE;
             const button = event.get_button?.() ?? 1;
             if (button !== 1)
                 return Clutter.EVENT_PROPAGATE;
-            this._invoke('Show');
+            this._activateApp();
             return Clutter.EVENT_STOP;
         });
 
@@ -160,6 +165,35 @@ class GsipperIndicator extends PanelMenu.Button {
         if (!this._proxy)
             return;
         this._proxy[`${method}Remote`](() => {});
+    }
+
+    _activateApp() {
+        // Standard org.freedesktop.Application.Activate. Goes through
+        // gnome-shell's own activation pipeline (which fills in the
+        // xdg-activation token automatically), so the focused window
+        // request is treated as user-initiated and the compositor
+        // raises gsipper without the 'is ready' notification.
+        Gio.DBus.session.call(
+            BUS_NAME,
+            '/com/pulpoff/gsipper',
+            'org.freedesktop.Application',
+            'Activate',
+            new GLib.Variant('(a{sv})', [{}]),
+            null,
+            Gio.DBusCallFlags.NONE,
+            -1,
+            null,
+            (conn, res) => {
+                try {
+                    conn.call_finish(res);
+                } catch (e) {
+                    console.warn(`gsipper: Activate failed: ${e.message}`);
+                    // Fallback: our own Show() — still better than
+                    // nothing if the standard path errored out.
+                    this._invoke('Show');
+                }
+            },
+        );
     }
 
     destroy() {
