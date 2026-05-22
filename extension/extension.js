@@ -26,6 +26,7 @@
 import Clutter from 'gi://Clutter';
 import GObject from 'gi://GObject';
 import GLib from 'gi://GLib';
+import Shell from 'gi://Shell';
 import St from 'gi://St';
 import Gio from 'gi://Gio';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
@@ -35,6 +36,7 @@ import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 
 const BUS_NAME = 'com.pulpoff.gsipper';
 const OBJECT_PATH = '/com/pulpoff/gsipper/Status';
+const DESKTOP_ID = 'com.pulpoff.gsipper.desktop';
 
 const STATUS_IFACE = `
 <node>
@@ -58,12 +60,12 @@ const GsipperProxy = Gio.DBusProxy.makeProxyWrapper(STATUS_IFACE);
 const GsipperIndicator = GObject.registerClass(
 class GsipperIndicator extends PanelMenu.Button {
     _init() {
-        // Pass dontCreateMenu=true so PanelMenu.Button doesn't
-        // attach a popup to `this.menu` (it would otherwise open
-        // on ANY click, including the left-click that we want to
-        // route through Activate). We do want a popup, but only
-        // on right-click — build our own below so we keep total
-        // control over which button opens it.
+        // dontCreateMenu=true. We DO want a popup, but only on
+        // right-click, and we manage it manually below — if we
+        // attached it via setMenu() then PanelMenu.Button's
+        // 'event'-signal handler would toggle it on EVERY click
+        // (left included). Keeping `this.menu` undefined keeps the
+        // parent's `if (this.menu)` guard happy and out of our way.
         super._init(0.0, 'gsipper', true);
 
         // Coloured dot — color via the standard `color:` CSS rule
@@ -74,31 +76,55 @@ class GsipperIndicator extends PanelMenu.Button {
         });
         this.add_child(this._icon);
 
-        // Build the right-click popup. PopupMenu attached to `this`
-        // anchors itself under the panel button automatically.
-        const menu = new PopupMenu.PopupMenu(this, 0.5, St.Side.TOP);
-        Main.uiGroup.add_child(menu.actor);
-        menu.actor.hide();
-        this.setMenu(menu);
+        // Build the right-click popup manually so we control which
+        // button opens it. Stored on `this._statusMenu` (NOT
+        // `this.menu`) so PanelMenu.Button's auto-toggle stays
+        // disabled.
+        this._statusMenu = new PopupMenu.PopupMenu(this, 0.5, St.Side.TOP);
+        Main.uiGroup.add_child(this._statusMenu.actor);
+        this._statusMenu.actor.hide();
+        this._menuManager = new PopupMenu.PopupMenuManager(this);
+        this._menuManager.addMenu(this._statusMenu);
 
         this._connectItem = new PopupMenu.PopupMenuItem('Connect');
         this._connectItem.connect('activate', () => this._invoke('Connect'));
-        menu.addMenuItem(this._connectItem);
+        this._statusMenu.addMenuItem(this._connectItem);
 
         this._disconnectItem = new PopupMenu.PopupMenuItem('Disconnect');
         this._disconnectItem.connect('activate', () => this._invoke('Disconnect'));
-        menu.addMenuItem(this._disconnectItem);
+        this._statusMenu.addMenuItem(this._disconnectItem);
 
         this._reconnectItem = new PopupMenu.PopupMenuItem('Reconnect');
         this._reconnectItem.connect('activate', () => this._invoke('Reconnect'));
-        menu.addMenuItem(this._reconnectItem);
+        this._statusMenu.addMenuItem(this._reconnectItem);
 
         this._exitSep = new PopupMenu.PopupSeparatorMenuItem();
-        menu.addMenuItem(this._exitSep);
+        this._statusMenu.addMenuItem(this._exitSep);
 
         this._exitItem = new PopupMenu.PopupMenuItem('Exit');
         this._exitItem.connect('activate', () => this._invoke('Quit'));
-        menu.addMenuItem(this._exitItem);
+        this._statusMenu.addMenuItem(this._exitItem);
+
+        // Click handling. Stays on the 'button-press-event' signal
+        // (NOT vfunc_event) — vfunc_event runs before gnome-shell
+        // has finished processing the input, so a D-Bus Activate
+        // fired from there doesn't get an xdg-activation token
+        // attached and we're back to the 'gsipper is ready'
+        // notification. button-press-event runs late enough that
+        // Shell.App.activate() finds the user-input context it
+        // needs.
+        this.connect('button-press-event', (_actor, event) => {
+            const button = event.get_button?.() ?? 1;
+            if (button === 1) {
+                this._activateApp();
+                return Clutter.EVENT_STOP;
+            }
+            if (button === 3) {
+                this._statusMenu.toggle();
+                return Clutter.EVENT_STOP;
+            }
+            return Clutter.EVENT_PROPAGATE;
+        });
 
         this._proxy = null;
         this._propsChangedId = 0;
@@ -115,32 +141,11 @@ class GsipperIndicator extends PanelMenu.Button {
         );
     }
 
-    // PanelMenu.Button connects its menu-toggle to the generic
-    // 'event' signal, which fires for both left and right clicks.
-    // Override vfunc_event so we get a single decision point: left
-    // = Activate the app, right = toggle the popup, anything else
-    // propagates. We deliberately do NOT call super.vfunc_event,
-    // since the parent's default would also toggle the menu on
-    // every click and that's exactly the behaviour we're replacing.
-    vfunc_event(event) {
-        const t = event.type();
-        const isPress = (
-            t === Clutter.EventType.BUTTON_PRESS ||
-            t === Clutter.EventType.TOUCH_BEGIN
-        );
-        if (!isPress)
-            return Clutter.EVENT_PROPAGATE;
-        const button = event.get_button?.() ?? 1;
-        if (button === 1) {
-            this._activateApp();
-            return Clutter.EVENT_STOP;
-        }
-        if (button === 3 && this.menu) {
-            this.menu.toggle();
-            return Clutter.EVENT_STOP;
-        }
-        return Clutter.EVENT_PROPAGATE;
-    }
+    // Override removed: vfunc_event was suppressing gnome-shell's
+    // own event tracking for the click, which is what populates the
+    // xdg-activation token on the subsequent Activate D-Bus call.
+    // Letting the event reach the button-press-event signal handler
+    // restores the focus-stealing-prevention bypass.
 
     _connectBus() {
         if (this._proxy)
@@ -218,31 +223,31 @@ class GsipperIndicator extends PanelMenu.Button {
     }
 
     _activateApp() {
-        // Standard org.freedesktop.Application.Activate goes through
-        // gnome-shell's activation pipeline, which fills in the
-        // xdg-activation token automatically — the focused window
-        // request is treated as user-initiated and the compositor
-        // raises gsipper without the 'gsipper is ready' fallback
-        // notification.
-        Gio.DBus.session.call(
-            BUS_NAME,
-            '/com/pulpoff/gsipper',
-            'org.freedesktop.Application',
-            'Activate',
-            new GLib.Variant('(a{sv})', [{}]),
-            null,
-            Gio.DBusCallFlags.NONE,
-            -1,
-            null,
-            (conn, res) => {
-                try {
-                    conn.call_finish(res);
-                } catch (e) {
-                    console.warn(`gsipper: Activate failed: ${e.message}`);
-                    this._invoke('Show');
-                }
-            },
-        );
+        // Go through Shell.App.activate() rather than a raw D-Bus
+        // Activate. gnome-shell builds the xdg-activation token
+        // from the just-processed user-input event (panel click)
+        // and bakes it into the platform_data of the resulting
+        // org.freedesktop.Application.Activate call — so the
+        // compositor treats gsipper's present() as user-initiated
+        // and raises the window directly. A raw Gio.DBus.session
+        // .call('Activate', {}) from the extension misses this
+        // step and trips the focus-stealing fallback that pops up
+        // 'gsipper is ready'.
+        const appSys = Shell.AppSystem.get_default();
+        const app = appSys.lookup_app(DESKTOP_ID);
+        if (app) {
+            try {
+                app.activate();
+                return;
+            } catch (e) {
+                console.warn(`gsipper: Shell.App.activate failed: ${e.message}`);
+            }
+        } else {
+            console.warn(`gsipper: ${DESKTOP_ID} not found in AppSystem`);
+        }
+        // Fallback to our own Show() — still better than nothing
+        // if the .desktop lookup or activate path errored out.
+        this._invoke('Show');
     }
 
     destroy() {
