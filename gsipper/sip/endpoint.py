@@ -628,6 +628,20 @@ class SipEndpoint:
         acfg = pj.AccountConfig()
         acfg.idUri = f"{display}<sip:{s.username}@{domain}>"
         acfg.regConfig.registrarUri = f"sip:{s.server}"
+        # PJSIP's default retry cadence is 300 s, which makes a
+        # transient registration failure feel like a half-decade-long
+        # outage. Tighten to 30 s. MainWindow watches for three
+        # consecutive failures and then pauses retries for two
+        # minutes via set_registration(False) + a GLib.timeout —
+        # gives the trunk a breather without the user-visible
+        # multi-minute backoff between individual attempts.
+        try:
+            acfg.regConfig.retryIntervalSec = 30
+            acfg.regConfig.firstRetryIntervalSec = 30
+        except AttributeError:
+            # Older pjsua2 SWIG builds exposed these under different
+            # names; carry on with the defaults if we can't set them.
+            pass
 
         cred = pj.AuthCredInfo(
             "digest", "*",

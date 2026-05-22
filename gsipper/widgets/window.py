@@ -44,6 +44,15 @@ from .ringin_window import RinginWindow
 logger = logging.getLogger(__name__)
 
 
+# Registration retry backoff. After this many consecutive REGISTER
+# failures we pause auto-retry for _RETRY_PAUSE_SECS, then resume —
+# so the user sees three quick attempts, a 2-minute breather, three
+# more attempts, etc., rather than PJSIP banging on a dead trunk
+# forever or backing off to 5+ minutes between tries.
+_RETRY_GROUP_SIZE = 3
+_RETRY_PAUSE_SECS = 120
+
+
 _BaseWindow = Adw.ApplicationWindow if _USE_ADW else Gtk.ApplicationWindow
 
 
@@ -69,6 +78,15 @@ class MainWindow(_BaseWindow):
         # trunk's 200 OK to our un-REGISTER) doesn't flap the dot back
         # to yellow / "Registering…".
         self._user_disconnected = False
+        # Retry-backoff state. PJSIP retries failed REGISTERs on its
+        # own (~30s between attempts via regConfig.retryIntervalSec
+        # set in endpoint._build_account_config). After three
+        # consecutive 4xx/5xx failures we pause registration for
+        # _RETRY_PAUSE_SECS so the trunk gets a breather, then
+        # resume — the cycle repeats until we either get a success
+        # (resets the counter) or the user clicks Disconnect.
+        self._reg_failure_count = 0
+        self._retry_timer_id = 0
         self._tray = TrayIndicator()
         self._ringer = Ringer()
         self._ringin_window: RinginWindow | None = None
@@ -241,12 +259,12 @@ class MainWindow(_BaseWindow):
         menu = Gio.Menu()
 
         account_section = Gio.Menu()
-        account_section.append("Account…", "win.account")
-        account_section.append("Settings…", "win.settings")
+        account_section.append("Account", "win.account")
+        account_section.append("Settings", "win.settings")
         menu.append_section(None, account_section)
 
         tools_section = Gio.Menu()
-        tools_section.append("Log…", "win.log")
+        tools_section.append("Log", "win.log")
         menu.append_section(None, tools_section)
 
         meta_section = Gio.Menu()
@@ -417,8 +435,11 @@ class MainWindow(_BaseWindow):
     def _on_reg_state(self, active: bool, code: int, reason: str) -> None:
         logger.info("status: active=%s code=%s reason=%s", active, code, reason)
         if active:
-            # Any successful REGISTER clears the user-disconnect latch.
+            # Any successful REGISTER clears the user-disconnect latch
+            # and the retry-backoff counter.
             self._user_disconnected = False
+            self._reg_failure_count = 0
+            self._cancel_retry_pause()
             tip = "Online"
             codec_tip = self._codec_tooltip()
             if codec_tip:
@@ -429,14 +450,31 @@ class MainWindow(_BaseWindow):
         elif self._user_disconnected:
             # User clicked Disconnect; don't flap back to yellow when
             # the trunk's 200 OK to our un-REGISTER arrives.
+            self._reg_failure_count = 0
+            self._cancel_retry_pause()
             self._set_status("offline", tooltip="Disconnected")
             self._tray.set_state("offline")
             self._publish_dbus_status("offline")
         elif code >= 400:
-            self._set_status("offline", tooltip=f"Error {code}: {reason}")
-            self._tray.set_state("offline")
-            self._publish_dbus_status("offline")
+            self._reg_failure_count += 1
+            logger.info("REGISTER failure #%d (code=%d %s)",
+                        self._reg_failure_count, code, reason)
+            if (self._reg_failure_count % _RETRY_GROUP_SIZE) == 0:
+                # Hit the threshold — pause auto-retry for two
+                # minutes, then kick it back on. PJSIP's own retry
+                # timer would otherwise keep banging at ~30s
+                # intervals forever, which is unfriendly to the
+                # trunk and racks up failed log lines.
+                self._begin_retry_pause(code, reason)
+            else:
+                self._set_status("offline",
+                                 tooltip=f"Error {code}: {reason} "
+                                         f"(attempt {self._reg_failure_count})")
+                self._tray.set_state("offline")
+                self._publish_dbus_status("offline")
         elif not self._settings.account.enabled:
+            self._reg_failure_count = 0
+            self._cancel_retry_pause()
             self._set_status("offline", tooltip="Account disabled")
             self._tray.set_state("offline")
             self._publish_dbus_status("offline")
@@ -445,6 +483,58 @@ class MainWindow(_BaseWindow):
                              tooltip=f"Registering… {reason}" if reason else "Registering…")
             self._tray.set_state("connecting")
             self._publish_dbus_status("connecting")
+
+    # ------------------------------------------------------------------
+    # Registration retry backoff
+    # ------------------------------------------------------------------
+
+    def _begin_retry_pause(self, code: int, reason: str) -> None:
+        """Three failures in a row — take a 2-minute breather, then
+        resume registration. Cancels PJSIP's own auto-retry by
+        sending an un-REGISTER, then re-arms via a GLib timeout."""
+        if self._retry_timer_id:
+            return
+        logger.info("REGISTER failed %d× — pausing %ds before retrying",
+                    self._reg_failure_count, _RETRY_PAUSE_SECS)
+        self._set_status(
+            "offline",
+            tooltip=f"Error {code}: {reason} — retrying in "
+                    f"{_RETRY_PAUSE_SECS}s")
+        self._tray.set_state("offline")
+        self._publish_dbus_status("offline")
+        if self._sip is not None:
+            try:
+                self._sip.set_registration(False)
+            except Exception:
+                logger.exception("set_registration(False) for backoff failed")
+        self._retry_timer_id = GLib.timeout_add_seconds(
+            _RETRY_PAUSE_SECS, self._on_retry_pause_elapsed,
+        )
+
+    def _on_retry_pause_elapsed(self) -> bool:
+        self._retry_timer_id = 0
+        # User clicked Disconnect during the pause — don't resume.
+        if self._user_disconnected:
+            return False
+        if self._sip is None or not self._settings.account.enabled:
+            return False
+        logger.info("retry pause elapsed; reconnecting")
+        self._set_status("connecting", tooltip="Retrying…")
+        self._tray.set_state("connecting")
+        self._publish_dbus_status("connecting")
+        # Full configure_account rebuild — setRegistration(True) on
+        # a still-armed account often short-circuits in PJSIP and
+        # never puts a fresh REGISTER on the wire.
+        try:
+            self._sip.configure_account(self._settings.account)
+        except Exception:
+            logger.exception("retry configure_account failed")
+        return False  # one-shot
+
+    def _cancel_retry_pause(self) -> None:
+        if self._retry_timer_id:
+            GLib.source_remove(self._retry_timer_id)
+            self._retry_timer_id = 0
 
     def _codec_tooltip(self) -> str:
         enabled = self._sip.enabled_codecs
@@ -510,6 +600,8 @@ class MainWindow(_BaseWindow):
             save_settings(self._settings)
             logger.info("Connect: re-enabling disabled account in settings")
         self._user_disconnected = False
+        self._reg_failure_count = 0
+        self._cancel_retry_pause()
         self._set_status("connecting", tooltip="Connecting…")
         self._sip.set_registration(True)
 
@@ -519,6 +611,8 @@ class MainWindow(_BaseWindow):
         # Latch + paint red immediately so the dot doesn't flap to
         # yellow when the trunk's 200 OK to our un-REGISTER arrives.
         self._user_disconnected = True
+        self._reg_failure_count = 0
+        self._cancel_retry_pause()
         self._set_status("offline", tooltip="Disconnected")
         self._tray.set_state("offline")
         self._publish_dbus_status("offline")
@@ -541,6 +635,8 @@ class MainWindow(_BaseWindow):
             save_settings(self._settings)
             logger.info("Reconnect: re-enabling disabled account in settings")
         self._user_disconnected = False
+        self._reg_failure_count = 0
+        self._cancel_retry_pause()
         self._set_status("connecting", tooltip="Reconnecting…")
         self._sip.configure_account(self._settings.account)
 

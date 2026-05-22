@@ -1,3 +1,23 @@
+gsipper (1.3.35-1) unstable; urgency=medium
+
+  * Registration retry backoff: after three consecutive
+    REGISTER failures, gsipper now pauses auto-retry for two
+    minutes before resuming. PJSIP's own retry interval is
+    tightened from 300 s to 30 s (regConfig.retryIntervalSec /
+    firstRetryIntervalSec) so the three attempts within each
+    'group' feel responsive — three failures land in ~90 s,
+    then a 120 s breather, then three more, and so on. Any
+    success during the cycle resets the failure counter +
+    cancels the pause; clicking Connect / Disconnect /
+    Reconnect on the status dot does too.
+  * Window menu: drop the trailing '…' from Account / Settings
+    / Log entries. The ellipsis is supposed to mean 'opens a
+    dialog you can cancel' and Adwaita / GTK4 itself doesn't
+    use it for the equivalent menu items any more; without it
+    the menu reads less noisy.
+
+ -- pulpoff <noreply@pulpoff.com>  Tue, 20 May 2026 00:00:00 +0000
+
 gsipper (1.3.34-1) unstable; urgency=medium
 
   * GNOME-Shell extension: split the panel-dot click semantics.
