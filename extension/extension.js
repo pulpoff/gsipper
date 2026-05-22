@@ -5,9 +5,11 @@
 // instance's SIP status via D-Bus. The icon is hidden while
 // gsipper is not running.
 //
-//   left click  → open the main app (xdg-activation via the
-//                 standard org.freedesktop.Application.Activate,
-//                 so no 'gsipper is ready' notification)
+//   left click  → toggle: bring the main window forward
+//                 (Shell.App.activate, xdg-activation token →
+//                 no 'gsipper is ready' notification) if it's
+//                 hidden, hide it back to the tray if it's
+//                 already visible.
 //   right click → popup menu matching the in-app status dot:
 //                   normal mode:  Connect or Disconnect /
 //                                 Reconnect / Exit
@@ -116,7 +118,7 @@ class GsipperIndicator extends PanelMenu.Button {
         this.connect('button-press-event', (_actor, event) => {
             const button = event.get_button?.() ?? 1;
             if (button === 1) {
-                this._activateApp();
+                this._toggleApp();
                 return Clutter.EVENT_STOP;
             }
             if (button === 3) {
@@ -220,6 +222,31 @@ class GsipperIndicator extends PanelMenu.Button {
         if (!this._proxy)
             return;
         this._proxy[`${method}Remote`](() => {});
+    }
+
+    _toggleApp() {
+        // Left-click on the panel dot toggles the gsipper window:
+        // first click brings it forward, second click hides it
+        // back to the tray. We detect "currently visible" by asking
+        // gnome-shell which top-level windows the app owns — when
+        // gsipper's MainWindow._on_window_close hide-to-trays, the
+        // GTK surface is unmapped and Shell.App drops it from the
+        // tracked window list, so an empty list reliably means
+        // "hidden". Any non-empty list means a visible window
+        // exists; we send it the standard WM close, which gsipper
+        // intercepts and turns back into a hide-to-tray.
+        const app = Shell.AppSystem.get_default().lookup_app(DESKTOP_ID);
+        const windows = app ? app.get_windows() : [];
+        const visible = windows.filter(w => !w.minimized);
+        if (visible.length > 0) {
+            try {
+                visible[0].delete(global.get_current_time());
+                return;
+            } catch (e) {
+                console.warn(`gsipper: window.delete failed: ${e.message}`);
+            }
+        }
+        this._activateApp();
     }
 
     _activateApp() {
