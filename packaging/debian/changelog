@@ -1,3 +1,22 @@
+gsipper (1.3.34-1) unstable; urgency=medium
+
+  * GNOME-Shell extension: split the panel-dot click semantics.
+      - Left click  -> Activate the app (xdg-activation, no
+                       'is ready' notification — same as 1.3.33).
+      - Right click -> popup menu mirroring the in-app status
+                       dot:
+                         normal mode:  Connect or Disconnect
+                                       (state-aware) / Reconnect
+                                       / Exit
+                         kiosk mode:   Reconnect only
+    vfunc_event takes over from PanelMenu.Button's generic
+    'event' handler so we get a single decision point — the
+    parent's default would have toggled the menu on every click,
+    which is exactly the behaviour we're replacing.
+    extension/metadata.json version bumped 8 -> 9.
+
+ -- pulpoff <noreply@pulpoff.com>  Tue, 20 May 2026 00:00:00 +0000
+
 gsipper (1.3.33-1) unstable; urgency=medium
 
   * Stop showing the 'gsipper is ready' notification when the
