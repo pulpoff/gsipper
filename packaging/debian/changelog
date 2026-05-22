@@ -1,3 +1,18 @@
+gsipper (1.3.37-1) unstable; urgency=medium
+
+  * Left-click on the panel dot is now a toggle. First click
+    brings the gsipper window forward (Shell.App.activate, with
+    xdg-activation token — same as 1.3.36). Second click sends
+    a WM-close to the visible window, which MainWindow's
+    close-request handler turns back into a hide-to-tray. We
+    detect "currently visible" via Shell.App.get_windows() —
+    when the window is hide-to-trayed the GTK surface is
+    unmapped and Shell.App drops it from the tracked list, so
+    an empty list reliably means hidden.
+    extension/metadata.json version 10 -> 11.
+
+ -- pulpoff <noreply@pulpoff.com>  Tue, 20 May 2026 00:00:00 +0000
+
 gsipper (1.3.36-1) unstable; urgency=medium
 
   * Bring back the no-'is ready'-notification panel-icon click
