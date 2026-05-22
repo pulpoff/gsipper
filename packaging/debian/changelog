@@ -1,3 +1,29 @@
+gsipper (1.3.36-1) unstable; urgency=medium
+
+  * Bring back the no-'is ready'-notification panel-icon click
+    that 1.3.34 broke. Two changes versus 1.3.34/1.3.35:
+      - Click handling moved off vfunc_event back onto the
+        button-press-event signal. vfunc_event runs before
+        gnome-shell has finished registering the click, so the
+        Activate that fires from there has no xdg-activation
+        token attached, and the compositor falls back to the
+        'gsipper is ready' notification. button-press-event
+        runs late enough for the activation context to exist.
+      - Activate now goes through Shell.App.activate() rather
+        than a raw Gio.DBus.session.call('Activate', {}).
+        Shell.App.activate() is gnome-shell's own canonical
+        path: it pulls the activation token from the latest
+        input event and bakes it into the Activate D-Bus call's
+        platform_data automatically — same code path the
+        app-grid uses, same focus-stealing-bypass behaviour.
+    Right-click popup now lives on `this._statusMenu` (not
+    `this.menu`), so PanelMenu.Button's auto-toggle on every
+    click stays disabled — only our own button-press-event
+    handler can open it, and only on button 3.
+    extension/metadata.json version 9 -> 10.
+
+ -- pulpoff <noreply@pulpoff.com>  Tue, 20 May 2026 00:00:00 +0000
+
 gsipper (1.3.35-1) unstable; urgency=medium
 
   * Registration retry backoff: after three consecutive

@@ -3,6 +3,6 @@
   "name": "gsipper status",
   "description": "Top-bar status indicator for the gsipper SIP client. Shows the registration status as a coloured dot (green online / yellow connecting / red offline). Left-click brings the gsipper window forward; right-click opens a Connect / Disconnect / Reconnect / Exit menu mirroring the in-app status dot.",
   "shell-version": ["45", "46", "47", "48", "49"],
-  "version": 9,
+  "version": 10,
   "url": "https://github.com/pulpoff/gsipper"
 }
