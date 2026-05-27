@@ -9,11 +9,9 @@ Depends: python3 (>= 3.10),
          python3-gi,
          gir1.2-gtk-4.0,
          gir1.2-adw-1,
-         gir1.2-gsound-1.0,
          gir1.2-gstreamer-1.0,
          gir1.2-gst-plugins-base-1.0,
          gstreamer1.0-plugins-good,
-         sound-theme-freedesktop,
          ffmpeg,
          libssl3 | libssl3t64,
          libasound2 | libasound2t64,
@@ -21,7 +19,9 @@ Depends: python3 (>= 3.10),
          libopus0,
          libsrtp2-1,
          libgsm1
-Recommends: gir1.2-ayatanaappindicator3-0.1,
+Recommends: gir1.2-gsound-1.0,
+            sound-theme-freedesktop,
+            gir1.2-ayatanaappindicator3-0.1,
             gnome-shell-extension-prefs
 Suggests: python3-pjsua2
 Description: Modern GNOME SIP client
