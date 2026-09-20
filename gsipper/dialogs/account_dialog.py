@@ -206,7 +206,12 @@ class AdvancedAccountDialog(Adw.PreferencesWindow):
         network = Adw.PreferencesGroup(title="Network")
         self._row_transport = _combo_row("Transport", _TRANSPORTS, account.transport)
         self._row_stun = _entry_row("STUN server", account.stun_server)
-        for r in (self._row_transport, self._row_stun):
+        self._row_use_tls = _switch_row(
+            "Use TLS", "Encrypt SIP signaling", account.use_tls)
+        self._row_use_srtp = _switch_row(
+            "Use SRTP", "Encrypt call audio/video", account.use_srtp)
+        for r in (self._row_transport, self._row_stun,
+                  self._row_use_tls, self._row_use_srtp):
             network.add(r)
         page.add(network)
 
@@ -312,5 +317,7 @@ class AdvancedAccountDialog(Adw.PreferencesWindow):
         a.domain = self._row_domain.get_text().strip()
         a.transport = _TRANSPORTS[self._row_transport.get_selected()]
         a.stun_server = self._row_stun.get_text().strip()
+        a.use_tls = _switch_row_value(self._row_use_tls)
+        a.use_srtp = _switch_row_value(self._row_use_srtp)
         a.codecs = self._codecs
         return False

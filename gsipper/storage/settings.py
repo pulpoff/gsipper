@@ -46,6 +46,8 @@ class AccountSettings:
     transport: str = "UDP"     # UDP, TCP, TLS
     stun_server: str = ""      # e.g. stun.l.google.com:19302
     enabled: bool = False
+    use_tls: bool = False      # force TLS for the SIP signaling transport
+    use_srtp: bool = False     # negotiate SRTP for media (optional, not mandatory)
     codecs: List[dict] = field(default_factory=default_codecs)
 
 

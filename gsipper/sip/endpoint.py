@@ -429,7 +429,8 @@ class SipEndpoint:
         )
         with self._lock:
             try:
-                self._ensure_started(settings.transport, settings.stun_server)
+                self._ensure_started(settings.transport, settings.stun_server,
+                                      settings.use_tls)
                 self._configure_codecs(settings.codecs)
                 self._teardown_account_locked()
                 if not (settings.enabled and settings.server
@@ -532,11 +533,12 @@ class SipEndpoint:
     # Internals
     # ------------------------------------------------------------------
 
-    def _ensure_started(self, transport: str, stun_server: str = "") -> None:
+    def _ensure_started(self, transport: str, stun_server: str = "",
+                         use_tls: bool = False) -> None:
         if self._started:
             return
-        logger.info("starting pjsua2 endpoint transport=%s stun=%s",
-                    transport, stun_server or "-")
+        logger.info("starting pjsua2 endpoint transport=%s stun=%s tls=%s",
+                    transport, stun_server or "-", use_tls)
         ep = pj.Endpoint()
         ep.libCreate()
 
@@ -568,8 +570,20 @@ class SipEndpoint:
             "TCP": pj.PJSIP_TRANSPORT_TCP,
             "TLS": pj.PJSIP_TRANSPORT_TLS,
         }.get(transport.upper(), pj.PJSIP_TRANSPORT_UDP)
+        # The "Use TLS" checkbox is independent of the Transport dropdown
+        # so the signaling transport can be secured without making the
+        # user also remember to flip the dropdown to TLS.
+        if use_tls:
+            ttype = pj.PJSIP_TRANSPORT_TLS
         tcfg = pj.TransportConfig()
         tcfg.port = 0  # ephemeral
+        if ttype == pj.PJSIP_TRANSPORT_TLS:
+            # verifyServer/verifyClient off: most SIP providers/PBXes use
+            # self-signed or non-public-CA certs, and we have no UI yet
+            # for the user to supply a trusted CA bundle. This still gets
+            # the wire encrypted; it just doesn't authenticate the peer.
+            tcfg.tlsConfig.verifyServer = False
+            tcfg.tlsConfig.verifyClient = False
         ep.transportCreate(ttype, tcfg)
 
         ep.libStart()
@@ -649,6 +663,15 @@ class SipEndpoint:
             s.password,
         )
         acfg.sipConfig.authCreds.append(cred)
+
+        if s.use_srtp:
+            acfg.mediaConfig.srtpUse = pj.PJMEDIA_SRTP_OPTIONAL
+            # Mandatory-secure-signaling only makes sense when the
+            # signaling transport is itself TLS; otherwise PJSIP will
+            # refuse to register because the SRTP key exchange (SDES)
+            # would be carried over a channel we didn't actually secure.
+            acfg.mediaConfig.srtpSecureSignaling = 1 if s.use_tls else 0
+
         return acfg
 
     def _teardown_account_locked(self) -> None:
